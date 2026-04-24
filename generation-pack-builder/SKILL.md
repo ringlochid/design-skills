@@ -21,6 +21,10 @@ Goal: transform source truth into deterministic generation inputs.
 - `copy-lock.md` — copy and content that must not drift.
 - `output-lock.md` — required output contract.
 
+## Scripts
+
+- `scripts/build_generation_pack.mjs`
+
 ## Output shape
 
 - Source files used
@@ -31,3 +35,7 @@ Goal: transform source truth into deterministic generation inputs.
 ## Stop boundary
 
 Do not call Stitch or other generation tools here.
+
+## Shared rules
+
+When promoting, generating, reviewing, repairing, or handing off artifacts, use `../design-repo-common/references/source-truth-rules.md`; use `../design-repo-common/references/tool-policy.md` for web/browser/image-generation placement.

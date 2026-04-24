@@ -30,5 +30,5 @@ Do not produce layout. Do not reduce the design to CRUD endpoints. Hand off to `
 
 ## Scripts
 
-- `scripts/openapi_inventory.py`
+- `scripts/openapi_inventory.py` (use `--out 03-references/backend/capabilities.md`)
 - `scripts/route_inventory.py`

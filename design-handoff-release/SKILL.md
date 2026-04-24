@@ -25,3 +25,7 @@ Goal: package the design so implementation can proceed without reverse-engineeri
 ## Stop boundary
 
 Do not silently approve weak designs. If review evidence is missing, return to `design-review-gate`.
+
+## Shared rules
+
+When promoting, generating, reviewing, repairing, or handing off artifacts, use `../design-repo-common/references/source-truth-rules.md`; use `../design-repo-common/references/tool-policy.md` for web/browser/image-generation placement.

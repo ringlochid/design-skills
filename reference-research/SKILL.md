@@ -34,3 +34,7 @@ Do not search for private/internal products unless asked.
 - Anti-patterns
 - Design implications
 - Caveats
+
+## Stop boundary
+
+Do not copy competitor designs. Do not browse private/internal products unless the user explicitly asks and access is already authorized. Treat references as context, not source truth; source-authoring skills must decide what to encode.

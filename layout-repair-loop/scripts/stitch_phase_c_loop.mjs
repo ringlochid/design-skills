@@ -96,6 +96,11 @@ const htmlPath = args['html-file'] || args.html || null;
 const deviceType = args['device-type'] || 'DESKTOP';
 const maxAttempts = Math.max(1, Math.min(2, Number(args['max-attempts'] || 2)));
 const inPlace = parseBooleanFlag(args['in-place'], false);
+const confirmInPlace = parseBooleanFlag(args['confirm-in-place'], false);
+if (inPlace && !confirmInPlace) {
+  console.error('Refusing --in-place true without --confirm-in-place true. Use candidate mode by default and promote only after review.');
+  process.exit(1);
+}
 const keepAttempts = parseBooleanFlag(args['keep-attempts'], false);
 const backupOriginal = parseBooleanFlag(args['backup-original'], true);
 const paths = await resolveDesignPaths({
@@ -111,13 +116,13 @@ const stateFile = paths.stateFile;
 const breakpoint = breakpointForDeviceType(deviceType);
 const stitchRoot = paths.stitchRoot || (stateFile ? path.dirname(stateFile) : (outdir ? path.dirname(outdir) : null));
 const viewport = viewportOptionsFromArgs(args, deviceType);
-const responsiveMapFile = args['responsive-map-file'] || (stitchRoot ? path.join(stitchRoot, 'responsive-map.md') : null);
+const responsiveMapFile = args['responsive-plan-file'] || args['responsive-map-file'] || (paths.pageDir ? path.join(paths.pageDir, 'responsive-plan.md') : null);
 const preApprovalLockFile = args['pre-approval-lock-file'] || null;
 const copyLockFile = args['copy-lock-file'] || null;
 const outputLockFile = args['output-lock-file'] || null;
 
 if (!htmlPath || !outdir || !stitchRoot) {
-  console.error('usage: stitch_phase_c_loop.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--responsive-map-file <file>] [--max-attempts 1|2] [--in-place true|false] [--keep-attempts true|false] [--backup-original true|false]');
+  console.error('usage: stitch_phase_c_loop.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--responsive-plan-file <file>] [--responsive-map-file <legacy-file>] [--max-attempts 1|2] [--in-place true|false] [--confirm-in-place true] [--keep-attempts true|false] [--backup-original true|false]');
   process.exit(1);
 }
 
@@ -191,6 +196,13 @@ if (inPlace && backupOriginal && !await fileExists(sourceBackupPath)) {
   await fs.copyFile(currentHtmlPath, sourceBackupPath).catch(() => {});
   summary.sourceBackupPath = await fileExists(sourceBackupPath) ? sourceBackupPath : null;
 }
+async function restoreAfterFailedInPlaceAttempt() {
+  if (inPlace && await fileExists(sourceBackupPath)) {
+    await fs.copyFile(sourceBackupPath, path.resolve(htmlPath)).catch(() => {});
+    return true;
+  }
+  return false;
+}
 
 for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
   const attemptDir = keepAttempts ? path.join(fixesRoot, `attempt-${attempt}`) : path.join(fixesRoot, 'current');
@@ -232,6 +244,11 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     assessment,
   });
 
+  if (inPlace && assessment.status !== 'clean' && assessment.status !== 'remap-required') {
+    const restored = await restoreAfterFailedInPlaceAttempt();
+    summary.attempts[summary.attempts.length - 1].restoredAfterFailedReview = restored;
+  }
+
   if (assessment.status === 'clean' || assessment.status === 'remap-required') {
     summary.status = assessment.status;
     summary.legacyStatus = legacyStatusFor(assessment.status);
@@ -255,11 +272,13 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
 
 summary.status = 'manual-polish-recommended';
 summary.legacyStatus = 'manual-review-required';
+const restoredAfterFailedReview = await restoreAfterFailedInPlaceAttempt();
 summary.final = {
   decision: 'manual-polish-recommended',
   legacyDecision: 'manual-review-required',
   reason: 'deterministic repair attempts did not produce a clean/serviceable candidate within 2 passes',
   candidateHtmlPath: currentHtmlPath,
   nextStep: 'do one bounded human polish pass, tighten the contract, or refresh from Stitch reference before retrying',
+  restoredAfterFailedReview,
 };
 await flushSummary(summary);

@@ -21,9 +21,17 @@ Goal: create optional visual assets or references.
 1. Read product brief and design system direction.
 2. Define asset purpose, style, dimensions, and usage rights/context.
 3. Generate 1–4 variants when useful.
-4. Save assets under `03-references/generated-assets/` or `04-generated/images/`.
+4. Save candidate/source-reference assets under `03-references/generated-assets/`; save generated variants under `04-generated/images/`.
 5. Use image analysis if extracting motifs back into the design system.
 
 ## Boundary
 
 Generated images are references/assets, not product or design-system truth unless explicitly selected and documented.
+
+## Output shape
+
+- Asset purpose
+- Generated paths
+- Selected/not-selected status
+- Source files consulted
+- How/if to feed back into design system

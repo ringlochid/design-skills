@@ -22,8 +22,14 @@ const stateUpdate = args['state-update'] || 'current';
 const promptStage = args['prompt-stage'] || 'generate';
 const viewport = viewportOptionsFromArgs(args, deviceType);
 
+const confirmExternalWrite = ['1', 'true', 'yes'].includes(String(args['confirm-external-write'] || '').toLowerCase());
+if (!confirmExternalWrite) {
+  console.error('Refusing Stitch generate: external Stitch mutations require --confirm-external-write true after explicit user approval.');
+  process.exit(1);
+}
+
 if (!promptFile || !outdir) {
-  console.error('usage: stitch_generate.mjs --prompt-file <file> [--project-root <dir> --page <page-key> | --outdir <dir>] [--title <name>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--model-id GEMINI_3_PRO|GEMINI_3_FLASH] [--project-id <id>] [--allow-new-project] [--state-file <file>] [--state-update current|none] [--primary-breakpoint mobile|desktop] [--prompt-stage <stage>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--viewport-width <px>] [--viewport-height <px>] [--device-scale-factor <n>] [--render-delay-ms <ms>]');
+  console.error('usage: stitch_generate.mjs --prompt-file <file> [--project-root <dir> --page <page-key> | --outdir <dir>] [--title <name>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--model-id GEMINI_3_PRO|GEMINI_3_FLASH] [--project-id <id>] [--allow-new-project] [--state-file <file>] [--state-update current|none] [--primary-breakpoint mobile|desktop] [--prompt-stage <stage>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--confirm-external-write true] [--viewport-width <px>] [--viewport-height <px>] [--device-scale-factor <n>] [--render-delay-ms <ms>]');
   process.exit(1);
 }
 
@@ -53,7 +59,7 @@ const stateEntryProjectId = [
   ...Object.values(state?.current || {}),
   ...Object.values(state?.approved || {}),
 ].map((entry) => entry?.projectId).find(Boolean) || null;
-const title = args.title || projectConfig?.projectName || `${paths.pageKey || 'Design Flow'} Stitch Project`;
+const title = args.title || projectConfig?.projectName || projectConfig?.productName || `${paths.pageKey || 'Design'} Stitch Project`;
 const effectiveProjectId = projectId || existingRuntime?.projectId || stateProjectId || stateEntryProjectId || null;
 const allowNewProject = ['1', 'true', 'yes'].includes(String(args['allow-new-project'] || '').toLowerCase());
 const priorArtifactsExist = Boolean(
@@ -65,7 +71,7 @@ const priorArtifactsExist = Boolean(
 );
 
 if (!effectiveProjectId && priorArtifactsExist && !allowNewProject) {
-  console.error('Refusing to create a fresh Stitch project: prior design-flow artifacts exist but no reusable projectId was resolved. Restore 00-meta/runtime/stitch-project.json, pass --project-id, or rerun with --allow-new-project if you intentionally want a new project.');
+  console.error('Refusing to create a fresh Stitch project: prior design artifacts exist but no reusable projectId was resolved. Restore 04-generated/stitch/project.json, pass --project-id, or rerun with --allow-new-project if you intentionally want a new project.');
   process.exit(1);
 }
 const result = await withKeyFallback(async (stitch) => {

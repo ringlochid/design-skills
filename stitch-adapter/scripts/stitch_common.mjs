@@ -68,9 +68,14 @@ export async function discoverDesignProjectRoot({ projectRoot = null, configFile
       current = path.dirname(candidate);
     }
     while (true) {
-      const configPath = path.join(current, '00-meta', 'design-config.json');
+      const v2ConfigPath = path.join(current, '00-product', 'design-config.json');
+      const legacyConfigPath = path.join(current, '00-meta', 'design-config.json');
+      const v2BriefPath = path.join(current, '00-product', 'brief.md');
+      const v2SystemPath = path.join(current, '01-system', 'DESIGN.md');
       const roadmapPath = path.join(current, 'ROADMAP.md');
-      if (await pathExists(configPath)) return current;
+      if (await pathExists(v2ConfigPath)) return current;
+      if (await pathExists(v2BriefPath) || await pathExists(v2SystemPath)) return current;
+      if (await pathExists(legacyConfigPath)) return current;
       if (await pathExists(roadmapPath)) return current;
       const parent = path.dirname(current);
       if (parent === current) break;
@@ -84,23 +89,29 @@ export async function loadDesignProjectConfig({ projectRoot = null, configFile =
   const resolvedProjectRoot = await discoverDesignProjectRoot({ projectRoot, configFile, startPath });
   const resolvedConfigFile = configFile
     ? path.resolve(configFile)
-    : (resolvedProjectRoot ? path.join(resolvedProjectRoot, '00-meta', 'design-config.json') : null);
+    : (resolvedProjectRoot ? path.join(resolvedProjectRoot, '00-product', 'design-config.json') : null);
   const defaults = {
     version: 2,
     projectRoot: resolvedProjectRoot,
-    metaDir: '00-meta',
-    pagesDir: '03-pages',
-    policyFile: '00-meta/design-policy.md',
-    runtimeDir: '00-meta/runtime',
-    designSystemDir: '00-meta/design-system',
+    productDir: '00-product',
+    metaDir: '00-product',
+    pagesDir: '02-pages',
+    referencesDir: '03-references',
+    generatedDir: '04-generated',
+    reviewDir: '05-review',
+    handoffDir: '06-handoff',
+    policyFile: '00-product/design-policy.md',
+    runtimeDir: '04-generated/stitch',
+    designSystemDir: '01-system',
     primaryBreakpoint: 'mobile',
     enabledBreakpoints: ['mobile', 'tablet', 'desktop'],
     themeStrategy: 'single-theme',
     repoAwarenessMode: 'inspect-only',
     designSystemMode: 'create-new',
     stitch: {
-      globalSessionIndex: '00-meta/runtime/stitch-sessions.json',
-      projectRuntime: '00-meta/runtime/stitch-project.json',
+      globalSessionIndex: '04-generated/stitch/stitch-sessions.json',
+      projectRuntime: '04-generated/stitch/project.json',
+      generatedRoot: '04-generated/stitch',
     },
     repoAware: {
       repoRoot: null,
@@ -209,13 +220,15 @@ export async function resolvePageDirectory({ projectRoot = null, config = null, 
   };
 }
 
-export function inferPageKeyFromStatePath(statePath, pagesDirName = '03-pages') {
+export function inferPageKeyFromStatePath(statePath, pagesDirName = '02-pages') {
   if (!statePath) return null;
   const resolved = path.resolve(statePath);
   const parts = resolved.split(path.sep).filter(Boolean);
   const pageRootName = path.basename(pagesDirName);
-  const index = parts.findIndex((part) => part === pageRootName);
-  if (index >= 0 && parts[index + 1]) return parts[index + 1];
+  const pageIndex = parts.findIndex((part) => part === pageRootName);
+  if (pageIndex >= 0 && parts[pageIndex + 1]) return parts[pageIndex + 1];
+  const generatedIndex = parts.findIndex((part, index) => part === 'stitch' && parts[index - 1] === '04-generated');
+  if (generatedIndex >= 0 && parts[generatedIndex + 1]) return parts[generatedIndex + 1];
   return null;
 }
 
@@ -223,7 +236,8 @@ export async function resolveDesignPaths({ projectRoot = null, configFile = null
   const config = await loadDesignProjectConfig({ projectRoot, configFile, startPath: startPath || outdir || stateFile || process.cwd() });
   const resolvedPage = page ? await resolvePageDirectory({ projectRoot: config.projectRoot, config, page }) : null;
   const breakpoint = breakpointForDeviceType(deviceType);
-  const stitchRoot = resolvedPage ? path.join(resolvedPage.pageDir, 'exports', 'stitch') : null;
+  const generatedRoot = config.projectRoot ? normalizeOptionalPath(config.projectRoot, config.stitch?.generatedRoot || '04-generated/stitch') : null;
+  const stitchRoot = resolvedPage && generatedRoot ? path.join(generatedRoot, resolvedPage.pageKey) : null;
   const resolvedStateFile = stateFile
     ? path.resolve(stateFile)
     : (stitchRoot ? path.join(stitchRoot, 'state.json') : (outdir ? inferStatePath({ outdir }) : null));
@@ -279,18 +293,25 @@ export async function assertPhaseZeroReady({ projectRoot = null, configFile = nu
   }
 
   const warnings = [];
-  if (!config.configFile || !await pathExists(config.configFile)) warnings.push(config.configFile || '00-meta/design-config.json');
-  if (!config.policyFilePath || !await pathExists(config.policyFilePath)) warnings.push(config.policyFilePath || '00-meta/design-policy.md');
+  if (!config.configFile || !await pathExists(config.configFile)) warnings.push(config.configFile || '00-product/design-config.json');
+  if (!config.policyFilePath || !await pathExists(config.policyFilePath)) warnings.push(config.policyFilePath || '00-product/design-policy.md');
 
   const repoStatusPath = config.metaRoot ? path.join(config.metaRoot, 'repo-status.json') : null;
   const repoContextPath = config.metaRoot ? path.join(config.metaRoot, 'repo-context.json') : null;
   const shouldRequireRepoOutputs = requireRepoContext && config.repoAwarenessMode !== 'ignore-repo';
   if (shouldRequireRepoOutputs) {
-    if (!repoStatusPath || !await pathExists(repoStatusPath)) warnings.push(repoStatusPath || '00-meta/repo-status.json');
-    if (!repoContextPath || !await pathExists(repoContextPath)) warnings.push(repoContextPath || '00-meta/repo-context.json');
+    if (!repoStatusPath || !await pathExists(repoStatusPath)) warnings.push(repoStatusPath || '00-product/repo-status.json');
+    if (!repoContextPath || !await pathExists(repoContextPath)) warnings.push(repoContextPath || '00-product/source-inventory.md');
   }
 
   const repoStatus = repoStatusPath ? await readJsonIfExists(repoStatusPath, null) : null;
+  if (requireRepoContext && repoStatus && repoStatus.ready !== true) {
+    const missing = [
+      ...(repoStatus.missingDirs || []),
+      ...(repoStatus.missingFiles || []),
+    ];
+    throw new Error(`Phase 0 repo preflight is not ready${missing.length ? `: ${missing.join(', ')}` : ''}`);
+  }
 
   const designWorkspaceReady = Boolean(
     repoStatus?.designWorkspaceSignals?.designWorkspaceReady
@@ -305,6 +326,9 @@ export async function assertPhaseZeroReady({ projectRoot = null, configFile = nu
   if (repoStatus?.recommendedMode === 'init-required' && config.repoAwarenessMode !== 'ignore-repo' && !designWorkspaceReady) {
     throw new Error('Repo preflight still says init is required and no usable design workspace scaffold was detected. Add ROADMAP/pages structure or refresh repo-awareness settings.');
   }
+  if (warnings.length && requireRepoContext) {
+    throw new Error(`Phase 0 context incomplete: ${warnings.join(', ')}`);
+  }
   return { config, repoStatus, warnings };
 }
 
@@ -313,14 +337,14 @@ export async function syncGlobalStitchSessionIndex({ projectRoot = null, globalS
   if (!resolvedProjectRoot) return null;
   const config = await loadDesignProjectConfig({ projectRoot: resolvedProjectRoot, startPath: statePath }).catch(() => null);
   const { runtime } = await loadProjectRuntime({ projectRoot: resolvedProjectRoot, config, startPath: statePath }).catch(() => ({ runtime: null }));
-  const indexPath = globalSessionIndexPath || config?.stitch?.globalSessionIndexPath || path.join(resolvedProjectRoot, '00-meta', 'runtime', 'stitch-sessions.json');
+  const indexPath = globalSessionIndexPath || config?.stitch?.globalSessionIndexPath || path.join(resolvedProjectRoot, '04-generated', 'stitch', 'stitch-sessions.json');
   const current = await readJsonIfExists(indexPath, {
     version: 1,
     projectRoot: resolvedProjectRoot,
     pages: {},
     updatedAt: null,
   });
-  const pageKey = inferPageKeyFromStatePath(statePath, config?.pagesDir || '03-pages');
+  const pageKey = inferPageKeyFromStatePath(statePath, config?.pagesDir || '02-pages');
   if (!pageKey) return indexPath;
   current.pages = current.pages || {};
   current.pages[pageKey] = {
@@ -518,6 +542,9 @@ export async function assertPromptPacketReadyForStitch({
   if (stage.includes('generate') && !preApproval.preApprovalLock) {
     errors.push(`missing pre-approval lock: ${preApproval.preApprovalLockPath}`);
   }
+  if (stage.includes('generate') && !copy.copyLock) {
+    errors.push(`missing copy lock: ${copy.copyLockPath}`);
+  }
   if (stage.includes('remap') && !copy.copyLock) {
     errors.push(`missing copy lock: ${copy.copyLockPath}`);
   }
@@ -656,9 +683,12 @@ function findLikelyStitchRoot(targetPath) {
     if (part === 'design-work' && next === 'stitch') {
       return `${path.sep}${path.join(...parts.slice(0, i + 2))}`;
     }
-    // new repo structure: .../03-pages/.../exports/stitch/<breakpoint>
+    // v2 repo structure: .../04-generated/stitch/<page>/<breakpoint>
     if (part === 'stitch' && parts[i - 1] === 'exports') {
       return `${path.sep}${path.join(...parts.slice(0, i + 1))}`;
+    }
+    if (part === 'stitch' && parts[i - 1] === '04-generated' && parts[i + 1]) {
+      return `${path.sep}${path.join(...parts.slice(0, i + 2))}`;
     }
     if (part === 'stitch') {
       return `${path.sep}${path.join(...parts.slice(0, i + 1))}`;
@@ -677,17 +707,17 @@ export function semanticRulesPathForOutdir({ outdir, stateFile } = {}) {
 
 export function preApprovalLockPathForOutdir({ outdir, stateFile, preApprovalLockFile } = {}) {
   if (preApprovalLockFile) return path.resolve(preApprovalLockFile);
-  return path.join(stitchRootForOutdir({ outdir, stateFile }), 'pre-approval-lock.md');
+  return path.join(stitchRootForOutdir({ outdir, stateFile }), 'locks', 'pre-approval-lock.md');
 }
 
 export function copyLockPathForOutdir({ outdir, stateFile, copyLockFile } = {}) {
   if (copyLockFile) return path.resolve(copyLockFile);
-  return path.join(stitchRootForOutdir({ outdir, stateFile }), 'copy-lock.md');
+  return path.join(stitchRootForOutdir({ outdir, stateFile }), 'locks', 'copy-lock.md');
 }
 
 export function outputLockPathForOutdir({ outdir, stateFile, outputLockFile } = {}) {
   if (outputLockFile) return path.resolve(outputLockFile);
-  return path.join(stitchRootForOutdir({ outdir, stateFile }), 'output-lock.md');
+  return path.join(stitchRootForOutdir({ outdir, stateFile }), 'locks', 'output-lock.md');
 }
 
 export function inferStatePath({ outdir, stateFile } = {}) {
@@ -1612,6 +1642,7 @@ function contentTypeForFile(filePath) {
 
 async function startStaticServer(rootDir, defaultFile) {
   const resolvedRoot = path.resolve(rootDir);
+  const realRoot = await fs.realpath(resolvedRoot);
   const server = createHttpServer(async (req, res) => {
     try {
       const url = new URL(req.url || '/', 'http://127.0.0.1');
@@ -1623,7 +1654,19 @@ async function startStaticServer(rootDir, defaultFile) {
         res.end('Forbidden');
         return;
       }
-      const content = await fs.readFile(candidate);
+      const stat = await fs.lstat(candidate);
+      if (stat.isSymbolicLink()) {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Symlinks forbidden');
+        return;
+      }
+      const realCandidate = await fs.realpath(candidate);
+      if (realCandidate !== realRoot && !realCandidate.startsWith(`${realRoot}${path.sep}`)) {
+        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
+        res.end('Forbidden');
+        return;
+      }
+      const content = await fs.readFile(realCandidate);
       res.writeHead(200, { 'Content-Type': contentTypeForFile(candidate) });
       res.end(content);
     } catch (error) {
@@ -1917,8 +1960,8 @@ export async function exportPrimaryDesignSystem({ stitch, projectId, outdir, sta
   }
   const statePath = inferStatePath({ outdir, stateFile });
   const activeConfig = config || await loadDesignProjectConfig({ projectRoot, startPath: statePath }).catch(() => null);
-  const designSystemRoot = activeConfig?.designSystemRoot || path.join(path.dirname(statePath), 'design-system');
-  const exportedRoot = path.join(designSystemRoot, 'exported');
+  const generatedRoot = activeConfig?.projectRoot ? normalizeOptionalPath(activeConfig.projectRoot, activeConfig.stitch?.generatedRoot || '04-generated/stitch') : path.dirname(statePath);
+  const exportedRoot = path.join(generatedRoot, 'design-system-exported');
   const project = stitch.project(projectId);
   const systems = await project.listDesignSystems().catch(() => []);
   const primary = systems[0];
@@ -2027,6 +2070,7 @@ class CdpConnection {
     this.nextId = 1;
     this.pending = new Map();
     this.eventWaiters = [];
+    this.eventListeners = [];
   }
 
   static async connect(wsUrl) {
@@ -2061,6 +2105,11 @@ class CdpConnection {
       else pending.resolve(message.result || {});
       return;
     }
+    for (const listener of this.eventListeners) {
+      if (listener.method !== message.method) continue;
+      if (listener.sessionId && listener.sessionId !== message.sessionId) continue;
+      listener.handler(message);
+    }
     for (let i = 0; i < this.eventWaiters.length; i += 1) {
       const waiter = this.eventWaiters[i];
       if (waiter.method !== message.method) continue;
@@ -2069,6 +2118,15 @@ class CdpConnection {
       waiter.resolve(message);
       return;
     }
+  }
+
+  onEvent(method, sessionId, handler) {
+    const listener = { method, sessionId, handler };
+    this.eventListeners.push(listener);
+    return () => {
+      const index = this.eventListeners.indexOf(listener);
+      if (index >= 0) this.eventListeners.splice(index, 1);
+    };
   }
 
   async send(method, params = {}, sessionId) {
@@ -2138,6 +2196,10 @@ export async function renderHtmlPreview({ htmlPath, outPath, fullOutPath, viewpo
     '--no-first-run',
     '--no-default-browser-check',
     '--disable-dev-shm-usage',
+    '--disable-background-networking',
+    '--disable-sync',
+    '--disable-default-apps',
+    '--host-resolver-rules=MAP * 0.0.0.0, EXCLUDE 127.0.0.1, EXCLUDE localhost',
     '--remote-debugging-address=127.0.0.1',
     `--remote-debugging-port=${debugPort}`,
     `--user-data-dir=${userDataDir}`,
@@ -2158,6 +2220,15 @@ export async function renderHtmlPreview({ htmlPath, outPath, fullOutPath, viewpo
 
     await cdp.send('Page.enable', {}, sessionId);
     await cdp.send('Runtime.enable', {}, sessionId);
+    await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }, sessionId);
+    const allowedOrigin = staticServer.baseUrl;
+    const removeFetchListener = cdp.onEvent('Fetch.requestPaused', sessionId, (message) => {
+      const params = message.params || {};
+      const requestId = params.requestId;
+      const url = params.request?.url || '';
+      const allowed = url.startsWith(allowedOrigin) || url.startsWith('data:') || url.startsWith('blob:') || url === 'about:blank';
+      cdp.send(allowed ? 'Fetch.continueRequest' : 'Fetch.failRequest', allowed ? { requestId } : { requestId, errorReason: 'BlockedByClient' }, sessionId).catch(() => {});
+    });
     await cdp.send('Emulation.setDeviceMetricsOverride', {
       width: viewport.width,
       height: viewport.height,
@@ -2450,7 +2521,8 @@ export function buildLayoutDiagnostics({ html = '', deviceType = 'DESKTOP', view
   const widthRatio = viewportWidth > 0 && meaningfulWidth > 0 ? Number((meaningfulWidth / viewportWidth).toFixed(3)) : null;
   const fixedBottomBar = contentMetrics.fixedBottomBar || null;
   const lowerHtml = String(html || '').toLowerCase();
-  const lowerResponsiveMap = String(responsiveMapText || '').toLowerCase();
+  const responsiveMapRaw = String(responsiveMapText || '');
+  const lowerResponsiveMap = responsiveMapRaw.toLowerCase();
   const findings = [];
   const recommendedStrategies = [];
   const blockers = [];
@@ -2461,14 +2533,19 @@ export function buildLayoutDiagnostics({ html = '', deviceType = 'DESKTOP', view
   const addFinding = (severity, code, detail) => findings.push({ severity, code, detail });
 
   const semanticPassed = semanticCheck ? semanticCheck.passed === true : true;
-  const preApprovalPassed = preApprovalLockCheck ? preApprovalLockCheck.passed === true : true;
-  const copyPassed = copyLockCheck ? copyLockCheck.passed === true : true;
-  const outputPassed = outputLockCheck ? outputLockCheck.passed === true : true;
+  const preApprovalPassed = preApprovalLockCheck ? preApprovalLockCheck.passed === true : false;
+  const copyPassed = copyLockCheck ? copyLockCheck.passed === true : false;
+  const outputPassed = outputLockCheck ? outputLockCheck.passed === true : false;
 
   if (!semanticPassed) blockers.push('semantic-check-failed');
-  if (!preApprovalPassed) blockers.push('pre-approval-lock-failed');
-  if (!copyPassed) blockers.push('copy-lock-failed');
-  if (!outputPassed) blockers.push('output-lock-failed');
+  if (!preApprovalLockCheck) blockers.push('pre-approval-lock-missing');
+  else if (!preApprovalPassed) blockers.push('pre-approval-lock-failed');
+  if (!copyLockCheck) blockers.push('copy-lock-missing');
+  else if (!copyPassed) blockers.push('copy-lock-failed');
+  if (!outputLockCheck) blockers.push('output-lock-missing');
+  else if (!outputPassed) blockers.push('output-lock-failed');
+  if (!responsiveMapRaw.trim()) blockers.push('responsive-plan-missing');
+  else if (/\bTODO\b|Draft required before generation|Target shell must exist before layout repair/i.test(responsiveMapRaw)) blockers.push('responsive-plan-placeholder');
   if (semanticCheck?.error) blockers.push('semantic-check-error');
   if (preApprovalLockCheck?.error) blockers.push('pre-approval-lock-error');
   if (copyLockCheck?.error) blockers.push('copy-lock-error');

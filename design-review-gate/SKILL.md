@@ -31,3 +31,15 @@ Use browser screenshots/runtime inspection when HTML or live UI exists. Use imag
 ## Stop boundary
 
 Do not patch layout here. Hand off to source-writing, generation, responsive, or repair skills.
+
+## Output shape
+
+- Artifact reviewed
+- Evidence used
+- Findings
+- Verdict
+- Required next skill/action
+
+## Shared rules
+
+When promoting, generating, reviewing, repairing, or handing off artifacts, use `../design-repo-common/references/source-truth-rules.md`; use `../design-repo-common/references/tool-policy.md` for web/browser/image-generation placement.

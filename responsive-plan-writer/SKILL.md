@@ -23,3 +23,15 @@ Goal: define target breakpoint behavior before remap or repair.
 ## Stop boundary
 
 Do not enter layout repair if the target breakpoint does not yet have a valid shell.
+
+## Output shape
+
+- `02-pages/<page>/responsive-plan.md` path
+- Target breakpoints
+- Preserve/remap rules
+- Repair eligibility
+- Next action
+
+## Shared rules
+
+When promoting, generating, reviewing, repairing, or handing off artifacts, use `../design-repo-common/references/source-truth-rules.md`; use `../design-repo-common/references/tool-policy.md` for web/browser/image-generation placement.

@@ -9,7 +9,7 @@ Goal: create or validate the design repo skeleton without inventing product sema
 
 ## Workflow
 
-1. Inspect current workspace for product docs, existing design artifacts, repo UI, screenshots, Figma links, backend/API clues, and legacy `00-meta` / `03-pages` layout.
+1. Inspect current workspace for product docs, existing design artifacts, repo UI, screenshots, Figma links, backend/API clues, and legacy design-flow layout.
 2. Classify readiness:
    - `ready`: enough source truth exists.
    - `partial`: structure exists but key product/page truth is missing.
@@ -31,5 +31,7 @@ Do not fabricate product goals, page semantics, workflows, or design-system clai
 ## Scripts
 
 - `scripts/design_repo_preflight.mjs`
-- `scripts/design_flow_bootstrap_project.mjs`
-- `scripts/design_flow_bootstrap_page.mjs`
+- `scripts/design_repo_bootstrap_project.mjs`
+- `scripts/design_repo_bootstrap_page.mjs`
+
+Legacy migration helpers remain available as `design_flow_bootstrap_*`, but they write old paths and should not be used for normal v2 initialization. For legacy mapping, read `../design-repo-common/references/legacy-design-flow-migration.md`.

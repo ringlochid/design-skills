@@ -78,7 +78,7 @@ const result = await withKeyFallback(async (stitch) => {
     const { runtime } = await loadProjectRuntime({ projectRoot: paths.projectRoot, config: paths.config, startPath: stateFile }).catch(() => ({ runtime: null }));
     const projectId = args['project-id'] || runtime?.projectId || null;
     if (!projectId) {
-      throw new Error('Unable to resolve shared Stitch project for explicit reference sync. Provide --project-id or ensure 00-meta/runtime/stitch-project.json exists.');
+      throw new Error('Unable to resolve shared Stitch project for explicit reference sync. Provide --project-id or ensure 04-generated/stitch/project.json exists.');
     }
     const project = stitch.project(projectId);
     projectScreens = await listProjectScreens(project).catch(() => []);
@@ -103,7 +103,7 @@ const result = await withKeyFallback(async (stitch) => {
       if (explicitScreenId) {
         throw new Error(`Unable to resolve Stitch project screen id ${explicitScreenId} in project ${projectId}.`);
       }
-      throw new Error(`Unable to resolve Stitch project screen for query "${screenQuery}" in project ${projectId}. Check 00-meta/runtime/stitch-project-screens.json for available screen titles.`);
+      throw new Error(`Unable to resolve Stitch project screen for query "${screenQuery}" in project ${projectId}. Check 04-generated/stitch/stitch-project-screens.json for available screen titles.`);
     }
     selection = {
       projectId,

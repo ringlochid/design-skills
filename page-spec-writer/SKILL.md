@@ -19,7 +19,7 @@ Goal: define what a page must communicate and support before any generation tool
 - `02-pages/<page>/spec.md`
 - `02-pages/<page>/content.md` when copy/content matters
 - `02-pages/<page>/states.md` when runtime states matter
-- optional `02-pages/<page>/responsive-intent.md`
+- optional early responsive intent section in `02-pages/<page>/responsive-plan.md`
 
 ## Stop boundary
 

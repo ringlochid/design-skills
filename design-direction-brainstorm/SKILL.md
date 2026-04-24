@@ -32,3 +32,7 @@ Optional: generate moodboards or hero/reference concepts when visual ambiguity i
 ## Stop boundary
 
 Do not merge all ideas. Pick or recommend a direction.
+
+## Asset boundary
+
+This skill owns concept options. Delegate concrete image file generation to `visual-asset-generator`.

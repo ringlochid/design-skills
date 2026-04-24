@@ -23,8 +23,14 @@ const stateFile = paths.stateFile;
 const primaryBreakpoint = args['primary-breakpoint'] || paths.primaryBreakpoint;
 const viewport = viewportOptionsFromArgs(args, deviceType);
 
+const confirmExternalWrite = ['1', 'true', 'yes'].includes(String(args['confirm-external-write'] || '').toLowerCase());
+if (!confirmExternalWrite) {
+  console.error('Refusing Stitch edit: external Stitch mutations require --confirm-external-write true after explicit user approval.');
+  process.exit(1);
+}
+
 if (!promptFile || !outdir || (!projectId && !stateFile) || (!screenId && !stateFile)) {
-  console.error('usage: stitch_edit.mjs [--project-id <id>] [--screen-id <id>] --prompt-file <file> [--project-root <dir> --page <page-key> | --outdir <dir>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--model-id GEMINI_3_PRO|GEMINI_3_FLASH] [--state-file <file>] [--state-update current|none] [--primary-breakpoint mobile|desktop] [--prompt-stage <stage>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--viewport-width <px>] [--viewport-height <px>] [--device-scale-factor <n>] [--render-delay-ms <ms>]');
+  console.error('usage: stitch_edit.mjs [--project-id <id>] [--screen-id <id>] --prompt-file <file> [--project-root <dir> --page <page-key> | --outdir <dir>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--model-id GEMINI_3_PRO|GEMINI_3_FLASH] [--state-file <file>] [--state-update current|none] [--primary-breakpoint mobile|desktop] [--prompt-stage <stage>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--confirm-external-write true] [--viewport-width <px>] [--viewport-height <px>] [--device-scale-factor <n>] [--render-delay-ms <ms>]');
   process.exit(1);
 }
 

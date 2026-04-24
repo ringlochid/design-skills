@@ -37,6 +37,11 @@ const htmlPath = args['html-file'] || args.html || null;
 const deviceType = args['device-type'] || 'DESKTOP';
 const attempt = Math.max(1, Number(args.attempt || 1));
 const inPlace = parseBooleanFlag(args['in-place'], false);
+const confirmInPlace = parseBooleanFlag(args['confirm-in-place'], false);
+if (inPlace && !confirmInPlace) {
+  console.error('Refusing --in-place true without --confirm-in-place true. Use candidate mode by default and promote only after review.');
+  process.exit(1);
+}
 const keepAttempts = parseBooleanFlag(args['keep-attempts'], false);
 const backupOriginal = parseBooleanFlag(args['backup-original'], true);
 const paths = await resolveDesignPaths({
@@ -54,7 +59,7 @@ const viewport = viewportOptionsFromArgs(args, deviceType);
 const stitchRoot = paths.stitchRoot || (stateFile ? path.dirname(stateFile) : (outdir ? path.dirname(outdir) : null));
 
 if (!htmlPath || !outdir || !stitchRoot) {
-  console.error('usage: stitch_layout_fix.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--diagnostics-file <file>] [--responsive-map-file <file>] [--attempt 1|2] [--in-place true|false] [--keep-attempts true|false] [--backup-original true|false]');
+  console.error('usage: stitch_layout_fix.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--diagnostics-file <file>] [--responsive-plan-file <file>] [--responsive-map-file <legacy-file>] [--attempt 1|2] [--in-place true|false] [--confirm-in-place true] [--keep-attempts true|false] [--backup-original true|false]');
   process.exit(1);
 }
 
@@ -69,7 +74,7 @@ if (!diagnostics) {
     preApprovalLockFile: args['pre-approval-lock-file'] || null,
     copyLockFile: args['copy-lock-file'] || null,
     outputLockFile: args['output-lock-file'] || null,
-    responsiveMapFile: args['responsive-map-file'] || null,
+    responsiveMapFile: args['responsive-plan-file'] || args['responsive-map-file'] || (paths.pageDir ? path.join(paths.pageDir, 'responsive-plan.md') : null),
     sourceLabel: 'layout-fix-pre-diagnose',
     viewport,
     localPatchApplied: false,
@@ -101,6 +106,13 @@ if (inPlace && backupOriginal && !await fileExists(sourceBackupPath)) {
 }
 const fixedHtmlPath = inPlace ? path.resolve(htmlPath) : path.join(attemptDir, 'screen.html');
 await fs.writeFile(fixedHtmlPath, fixedHtml);
+async function restoreInPlaceOnFailure() {
+  if (inPlace && await fileExists(sourceBackupPath)) {
+    await fs.copyFile(sourceBackupPath, path.resolve(htmlPath)).catch(() => {});
+    return true;
+  }
+  return false;
+}
 
 const layoutRepairPath = path.join(fixesRoot, 'layout-repair.md');
 await fs.writeFile(layoutRepairPath, `# Layout repair\n\n- Breakpoint: ${breakpoint}\n- Attempt: ${attempt}\n- Source html: ${path.resolve(htmlPath)}\n- Diagnostics file: ${path.resolve(diagnosticsFile)}\n- Selected strategies: ${(diagnostics.recommendedStrategies || []).join(', ') || 'none'}\n- Auto-fix allowed: ${diagnostics.safeToAutoFix ? 'yes' : 'no'}\n- Guardrail: preserve semantics and copy locks\n`);
@@ -115,12 +127,14 @@ const reviewed = await diagnoseLocalHtmlLayout({
   preApprovalLockFile: args['pre-approval-lock-file'] || null,
   copyLockFile: args['copy-lock-file'] || null,
   outputLockFile: args['output-lock-file'] || null,
-  responsiveMapFile: args['responsive-map-file'] || null,
+  responsiveMapFile: args['responsive-plan-file'] || args['responsive-map-file'] || (paths.pageDir ? path.join(paths.pageDir, 'responsive-plan.md') : null),
   sourceLabel: `layout-fix-attempt-${attempt}`,
   viewport,
   localPatchApplied: true,
   localPatchStrategy: (diagnostics.recommendedStrategies || []).join(', ') || 'layout-fix-auto',
 });
+
+const restoredAfterFailedReview = reviewed?.diagnostics?.safeToAutoFix === false ? await restoreInPlaceOnFailure() : false;
 
 process.stdout.write(JSON.stringify({
   breakpoint,
@@ -133,4 +147,5 @@ process.stdout.write(JSON.stringify({
   layoutRepairPath,
   diagnosticsFile: path.join(fixesRoot, 'layout-diagnostics.json'),
   reviewed,
+  restoredAfterFailedReview,
 }, null, 2) + '\n');
