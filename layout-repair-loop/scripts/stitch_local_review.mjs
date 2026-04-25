@@ -27,14 +27,15 @@ const preApprovalLockFile = args['pre-approval-lock-file'] || null;
 const copyLockFile = args['copy-lock-file'] || null;
 const outputLockFile = args['output-lock-file'] || null;
 const sourceLabel = args['source-label'] || 'local-layout-repair';
+const theme = args.theme || args['theme-name'] || null;
 const viewport = viewportOptionsFromArgs(args, deviceType);
 
 if (!htmlPath || !outdir) {
-  console.error('usage: stitch_local_review.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--source-label <label>] [--viewport-width <px>] [--viewport-height <px>] [--device-scale-factor <n>] [--render-delay-ms <ms>]');
+  console.error('usage: stitch_local_review.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--theme <theme-slug>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--source-label <label>] [--viewport-width <px>] [--viewport-height <px>] [--device-scale-factor <n>] [--render-delay-ms <ms>]');
   process.exit(1);
 }
 
-const stem = artifactStemForOutdir(outdir, { deviceType, breakpoint: breakpointForDeviceType(deviceType), pageKey: paths.pageKey }, { stateFile, pageKey: paths.pageKey });
+const stem = artifactStemForOutdir(outdir, { deviceType, breakpoint: breakpointForDeviceType(deviceType), pageKey: paths.pageKey, theme }, { stateFile, pageKey: paths.pageKey, theme });
 const existingMeta = await readJsonIfExists(`${outdir}/${stem}.meta.json`, {});
 const artifacts = await reviewLocalHtmlArtifacts({
   htmlPath,
@@ -47,6 +48,7 @@ const artifacts = await reviewLocalHtmlArtifacts({
     breakpoint: breakpointForDeviceType(deviceType),
     htmlSourcePath: htmlPath,
     pageKey: paths.pageKey,
+    theme,
   },
   viewport,
   options: {
@@ -55,6 +57,7 @@ const artifacts = await reviewLocalHtmlArtifacts({
     copyLockFile,
     outputLockFile,
     pageKey: paths.pageKey,
+    theme,
   },
 });
 

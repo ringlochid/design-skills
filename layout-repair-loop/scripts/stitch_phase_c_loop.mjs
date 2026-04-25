@@ -11,6 +11,7 @@ import {
   applyAutomatedLayoutFix,
   breakpointForDeviceType,
   writeJson,
+  artifactStemForOutdir,
 } from './stitch_common.mjs';
 
 function parseBooleanFlag(value, defaultValue = false) {
@@ -114,6 +115,8 @@ const paths = await resolveDesignPaths({
 const outdir = paths.outdir;
 const stateFile = paths.stateFile;
 const breakpoint = breakpointForDeviceType(deviceType);
+const theme = args.theme || args['theme-name'] || null;
+const artifactStem = artifactStemForOutdir(outdir || process.cwd(), { deviceType, breakpoint, pageKey: paths.pageKey, theme }, { stateFile, pageKey: paths.pageKey, theme });
 const stitchRoot = paths.stitchRoot || (stateFile ? path.dirname(stateFile) : (outdir ? path.dirname(outdir) : null));
 const viewport = viewportOptionsFromArgs(args, deviceType);
 const responsiveMapFile = args['responsive-plan-file'] || args['responsive-map-file'] || (paths.pageDir ? path.join(paths.pageDir, 'responsive-plan.md') : null);
@@ -122,11 +125,11 @@ const copyLockFile = args['copy-lock-file'] || null;
 const outputLockFile = args['output-lock-file'] || null;
 
 if (!htmlPath || !outdir || !stitchRoot) {
-  console.error('usage: stitch_phase_c_loop.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--responsive-plan-file <file>] [--responsive-map-file <legacy-file>] [--max-attempts 1|2] [--in-place true|false] [--confirm-in-place true] [--keep-attempts true|false] [--backup-original true|false]');
+  console.error('usage: stitch_phase_c_loop.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--theme <theme-slug>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--responsive-plan-file <file>] [--responsive-map-file <legacy-file>] [--max-attempts 1|2] [--in-place true|false] [--confirm-in-place true] [--keep-attempts true|false] [--backup-original true|false]');
   process.exit(1);
 }
 
-const fixesRoot = path.join(stitchRoot, 'layout-fixes', breakpoint);
+const fixesRoot = path.join(stitchRoot, 'layout-fixes', artifactStem);
 await ensureDir(fixesRoot);
 
 const summaryPath = path.join(fixesRoot, 'phase-c-summary.json');
@@ -149,6 +152,8 @@ const sourceReview = await diagnoseLocalHtmlLayout({
   sourceLabel: 'phase-c-loop-source',
   viewport,
   localPatchApplied: false,
+  pageKey: paths.pageKey,
+  theme,
 });
 
 const sourceAssessment = assessDiagnostics(sourceReview.diagnostics, deviceType, { stage: 'source' });
@@ -214,7 +219,7 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     diagnostics: currentDiagnostics,
     attempt,
   });
-  const fixedHtmlPath = inPlace ? currentHtmlPath : path.join(attemptDir, 'screen.html');
+  const fixedHtmlPath = inPlace ? currentHtmlPath : path.join(attemptDir, `${artifactStem}.html`);
   await fs.writeFile(fixedHtmlPath, fixedHtml);
 
   const reviewOutdir = inPlace ? outdir : attemptDir;
@@ -232,6 +237,8 @@ for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
     viewport,
     localPatchApplied: true,
     localPatchStrategy: (currentDiagnostics?.recommendedStrategies || []).join(', ') || 'phase-c-auto-fix',
+    pageKey: paths.pageKey,
+    theme,
   });
   const assessment = assessDiagnostics(reviewed.diagnostics, deviceType, { stage: 'attempt' });
   summary.attempts.push({

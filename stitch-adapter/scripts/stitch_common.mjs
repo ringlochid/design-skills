@@ -2729,7 +2729,7 @@ export function applyAutomatedLayoutFix({ html = '', deviceType = 'DESKTOP', dia
   return injectAutoFixStyle(html, cssChunks.join('\n\n'));
 }
 
-export async function diagnoseLocalHtmlLayout({ htmlPath, outdir, deviceType = 'DESKTOP', stateFile = null, preApprovalLockFile = null, copyLockFile = null, outputLockFile = null, responsiveMapFile = null, sourceLabel = 'layout-diagnose', viewport = defaultViewportForDeviceType(deviceType), localPatchApplied = false, localPatchStrategy = null, derivedFromScreenId = null } = {}) {
+export async function diagnoseLocalHtmlLayout({ htmlPath, outdir, deviceType = 'DESKTOP', stateFile = null, preApprovalLockFile = null, copyLockFile = null, outputLockFile = null, responsiveMapFile = null, sourceLabel = 'layout-diagnose', viewport = defaultViewportForDeviceType(deviceType), localPatchApplied = false, localPatchStrategy = null, derivedFromScreenId = null, pageKey = null, theme = null } = {}) {
   const artifacts = await reviewLocalHtmlArtifacts({
     htmlPath,
     outdir,
@@ -2739,10 +2739,14 @@ export async function diagnoseLocalHtmlLayout({ htmlPath, outdir, deviceType = '
       deviceType,
       breakpoint: breakpointForDeviceType(deviceType),
       htmlSourcePath: path.resolve(htmlPath),
+      pageKey,
+      theme,
     },
     viewport,
     options: {
       stateFile,
+      pageKey,
+      theme,
       preApprovalLockFile,
       copyLockFile,
       outputLockFile,
@@ -2767,7 +2771,8 @@ export async function diagnoseLocalHtmlLayout({ htmlPath, outdir, deviceType = '
     outputLockCheck: meta.outputLockCheck || null,
     responsiveMapText,
   });
-  const diagnosticsPath = path.join(outdir, 'layout-diagnostics.json');
+  const diagnosticsStem = artifactStemForOutdir(outdir, { deviceType, breakpoint: breakpointForDeviceType(deviceType), pageKey, theme }, { stateFile, pageKey, theme });
+  const diagnosticsPath = path.join(outdir, `${diagnosticsStem}.layout-diagnostics.json`);
   await writeJson(diagnosticsPath, diagnostics);
   await patchJson(artifacts.metaPath, {
     diagnosticsPath,

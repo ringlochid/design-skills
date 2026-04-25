@@ -12,6 +12,7 @@ import {
   diagnoseLocalHtmlLayout,
   applyAutomatedLayoutFix,
   breakpointForDeviceType,
+  artifactStemForOutdir,
 } from './stitch_common.mjs';
 
 function parseBooleanFlag(value, defaultValue = false) {
@@ -55,15 +56,17 @@ const paths = await resolveDesignPaths({
 const outdir = paths.outdir;
 const stateFile = paths.stateFile;
 const breakpoint = breakpointForDeviceType(deviceType);
+const theme = args.theme || args['theme-name'] || null;
+const artifactStem = artifactStemForOutdir(outdir || process.cwd(), { deviceType, breakpoint, pageKey: paths.pageKey, theme }, { stateFile, pageKey: paths.pageKey, theme });
 const viewport = viewportOptionsFromArgs(args, deviceType);
 const stitchRoot = paths.stitchRoot || (stateFile ? path.dirname(stateFile) : (outdir ? path.dirname(outdir) : null));
 
 if (!htmlPath || !outdir || !stitchRoot) {
-  console.error('usage: stitch_layout_fix.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--diagnostics-file <file>] [--responsive-plan-file <file>] [--responsive-map-file <legacy-file>] [--attempt 1|2] [--in-place true|false] [--confirm-in-place true] [--keep-attempts true|false] [--backup-original true|false]');
+  console.error('usage: stitch_layout_fix.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--theme <theme-slug>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--diagnostics-file <file>] [--responsive-plan-file <file>] [--responsive-map-file <legacy-file>] [--attempt 1|2] [--in-place true|false] [--confirm-in-place true] [--keep-attempts true|false] [--backup-original true|false]');
   process.exit(1);
 }
 
-const diagnosticsFile = args['diagnostics-file'] || path.join(outdir, 'layout-diagnostics.json');
+const diagnosticsFile = args['diagnostics-file'] || path.join(outdir, `${artifactStem}.layout-diagnostics.json`);
 let diagnostics = await readJsonIfExists(diagnosticsFile, null);
 if (!diagnostics) {
   const diagnosed = await diagnoseLocalHtmlLayout({
@@ -78,6 +81,8 @@ if (!diagnostics) {
     sourceLabel: 'layout-fix-pre-diagnose',
     viewport,
     localPatchApplied: false,
+    pageKey: paths.pageKey,
+    theme,
   });
   diagnostics = diagnosed.diagnostics;
 }
@@ -94,7 +99,7 @@ if (!diagnostics.safeToAutoFix) {
   process.exit(0);
 }
 
-const fixesRoot = path.join(stitchRoot, 'layout-fixes', breakpoint);
+const fixesRoot = path.join(stitchRoot, 'layout-fixes', artifactStem);
 const attemptDir = keepAttempts ? path.join(fixesRoot, `attempt-${attempt}`) : path.join(fixesRoot, 'current');
 await ensureDir(fixesRoot);
 if (!inPlace) await ensureDir(attemptDir);
@@ -104,7 +109,7 @@ const fixedHtml = applyAutomatedLayoutFix({ html: originalHtml, deviceType, diag
 if (inPlace && backupOriginal && !await fileExists(sourceBackupPath)) {
   await fs.copyFile(htmlPath, sourceBackupPath).catch(() => {});
 }
-const fixedHtmlPath = inPlace ? path.resolve(htmlPath) : path.join(attemptDir, 'screen.html');
+const fixedHtmlPath = inPlace ? path.resolve(htmlPath) : path.join(attemptDir, `${artifactStem}.html`);
 await fs.writeFile(fixedHtmlPath, fixedHtml);
 async function restoreInPlaceOnFailure() {
   if (inPlace && await fileExists(sourceBackupPath)) {
@@ -132,6 +137,8 @@ const reviewed = await diagnoseLocalHtmlLayout({
   viewport,
   localPatchApplied: true,
   localPatchStrategy: (diagnostics.recommendedStrategies || []).join(', ') || 'layout-fix-auto',
+  pageKey: paths.pageKey,
+  theme,
 });
 
 const restoredAfterFailedReview = reviewed?.diagnostics?.safeToAutoFix === false ? await restoreInPlaceOnFailure() : false;
