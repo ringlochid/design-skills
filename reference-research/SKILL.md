@@ -13,7 +13,7 @@ Search the web when external context materially affects quality:
 
 - unfamiliar market/category
 - competitor/product pattern scan
-- design conventions matter
+- design conventions, moodboards, or visual references matter
 - compliance/accessibility/industry norms may apply
 - user explicitly asks for inspiration/research
 
@@ -23,9 +23,10 @@ Do not search for private/internal products unless asked.
 
 1. Define research question and scope.
 2. Search for 3–7 strong references.
-3. Extract reusable patterns, not copyable designs.
+3. Extract reusable patterns, visual cues, and anti-patterns; do not copy designs.
 4. Save notes under `03-references/research/` or `00-product/research.md`.
-5. Hand off to brief/design-system/page spec as appropriate.
+5. If image generation is useful, write a short reference prompt and save outputs under `03-references/generated-assets/`.
+6. Hand off to brief/design-system/page spec as appropriate.
 
 ## Output shape
 

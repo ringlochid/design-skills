@@ -1,6 +1,6 @@
 ---
 name: design-system-writer
-description: Create or refine the design repo's visual system source truth. Use when writing `01-system/DESIGN.md`, themes, tokens, component guidance, or deriving a design system from repo styles, screenshots, brand docs, generated references, or product direction.
+description: Create/refine visual direction and design-system source truth. Use when writing `01-system/DESIGN.md`, themes, tokens, component guidance, comparing visual directions, or deriving a system from repo styles, screenshots, brand docs, generated references, or product direction.
 ---
 
 # Design System Writer
@@ -19,8 +19,10 @@ Goal: produce tool-agnostic visual/design-system guidance before generation.
 
 1. Identify the design-system source and confidence.
 2. Use image analysis for screenshots/reference visuals when helpful.
-3. Write/edit `01-system/DESIGN.md` and optional themes/tokens/components.
-4. Mark assumptions and avoid over-specific fake tokens.
+3. If direction is ambiguous, sketch 2–3 concise directions and recommend one before writing the system.
+4. If image generation would help, create only reference/moodboard/asset prompts and save outputs under `03-references/generated-assets/`; do not treat them as source truth.
+5. Write/edit `01-system/DESIGN.md` and optional themes/tokens/components.
+6. Mark assumptions and avoid over-specific fake tokens.
 
 ## Outputs
 
