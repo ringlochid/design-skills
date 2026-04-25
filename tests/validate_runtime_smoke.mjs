@@ -37,8 +37,11 @@ async function makeRepo({ ready = true, responsiveReady = true } = {}) {
 const readyRepo = await makeRepo({ ready: true, responsiveReady: true });
 run('node', ['design-repo-init/scripts/design_repo_preflight.mjs', '--project-root', readyRepo]);
 run('node', ['generation-pack-builder/scripts/build_generation_pack.mjs', '--project-root', readyRepo, '--page', 'dashboard', '--tool', 'stitch', '--breakpoint', 'desktop']);
-const outdir = path.join(readyRepo, '04-generated/stitch/dashboard/desktop');
-const promptFile = path.join(outdir, 'prompt.md');
+const outdir = path.join(readyRepo, '04-generated/stitch/dashboard');
+const promptFile = path.join(outdir, 'dashboard.desktop.prompt.md');
+if (await fs.stat(path.join(readyRepo, '04-generated/stitch/dashboard/desktop')).then(() => true).catch(() => false)) {
+  throw new Error('generation pack created deprecated breakpoint subdirectory');
+}
 const prompt = await fs.readFile(promptFile, 'utf8');
 await assertPromptPacketReadyForStitch({ promptFile, prompt, outdir, mode: 'generate', promptStage: 'generate' });
 await assertPhaseZeroReady({ projectRoot: readyRepo, requireRepoContext: true });

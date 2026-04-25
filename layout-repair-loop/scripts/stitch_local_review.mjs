@@ -7,6 +7,7 @@ import {
   viewportOptionsFromArgs,
   readJsonIfExists,
   resolveDesignPaths,
+  artifactStemForOutdir,
 } from './stitch_common.mjs';
 
 const args = parseArgs(process.argv);
@@ -33,7 +34,8 @@ if (!htmlPath || !outdir) {
   process.exit(1);
 }
 
-const existingMeta = await readJsonIfExists(`${outdir}/meta.json`, {});
+const stem = artifactStemForOutdir(outdir, { deviceType, breakpoint: breakpointForDeviceType(deviceType), pageKey: paths.pageKey }, { stateFile, pageKey: paths.pageKey });
+const existingMeta = await readJsonIfExists(`${outdir}/${stem}.meta.json`, {});
 const artifacts = await reviewLocalHtmlArtifacts({
   htmlPath,
   outdir,
@@ -44,6 +46,7 @@ const artifacts = await reviewLocalHtmlArtifacts({
     deviceType,
     breakpoint: breakpointForDeviceType(deviceType),
     htmlSourcePath: htmlPath,
+    pageKey: paths.pageKey,
   },
   viewport,
   options: {
@@ -51,6 +54,7 @@ const artifacts = await reviewLocalHtmlArtifacts({
     preApprovalLockFile,
     copyLockFile,
     outputLockFile,
+    pageKey: paths.pageKey,
   },
 });
 

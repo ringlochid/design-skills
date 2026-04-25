@@ -72,10 +72,12 @@ const result = await withKeyFallback(async (stitch) => {
     deviceType,
     modelId,
     sourcePromptFile: promptFile,
+    pageKey: paths.pageKey,
+    theme: args.theme || args['theme-name'] || null,
     preApprovalLockFile: args['pre-approval-lock-file'] || null,
     copyLockFile: args['copy-lock-file'] || null,
     outputLockFile: args['output-lock-file'] || null,
-  }, viewport, { stateFile: selection.statePath || stateFile });
+  }, viewport, { stateFile: selection.statePath || stateFile, pageKey: paths.pageKey, theme: args.theme || args['theme-name'] || null });
   const persisted = await persistProjectContext({
     stitch,
     projectId: selection.projectId,

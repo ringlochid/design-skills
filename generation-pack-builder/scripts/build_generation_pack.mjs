@@ -73,9 +73,8 @@ if (responsive && (/\bTODO\b/i.test(responsive) || /Draft required before genera
   throw new Error(`Responsive plan is still placeholder/draft: 02-pages/${pageKey}/responsive-plan.md`);
 }
 
-const outRoot = path.join(projectRoot, '04-generated', tool, pageKey);
-const outdir = path.join(outRoot, breakpoint);
-const locksDir = path.join(outRoot, 'locks');
+const outdir = path.join(projectRoot, '04-generated', tool, pageKey);
+const locksDir = path.join(outdir, 'locks');
 await ensureDir(outdir);
 await ensureDir(locksDir);
 
@@ -148,13 +147,14 @@ ${spec}
 
 ${states || '(none)'}
 `;
-await fs.writeFile(path.join(outdir, 'prompt.md'), prompt);
+const promptFile = path.join(outdir, `${pageKey}.${breakpoint}.prompt.md`);
+await fs.writeFile(promptFile, prompt);
 
 console.log(JSON.stringify({
   pageKey,
   tool,
   breakpoint,
-  promptFile: path.join(outdir, 'prompt.md'),
+  promptFile,
   locksDir,
   preApprovalLockFile: preApprovalLockPath,
   copyLockFile: copyLockPath,

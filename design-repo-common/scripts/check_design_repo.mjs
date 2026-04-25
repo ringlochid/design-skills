@@ -25,7 +25,7 @@ if (stage === 'generation' || stage === 'repair' || stage === 'handoff') {
   if (!page) { console.log('MISSING_ARG --page=<page>'); ok = false; }
   else {
     requirePath(`02-pages/${page}/spec.md`);
-    requirePath(`04-generated/stitch/${page}/${breakpoint}/prompt.md`);
+    requirePath(`04-generated/stitch/${page}/${page}.${breakpoint}.prompt.md`);
     requirePath(`04-generated/stitch/${page}/locks/pre-approval-lock.md`);
     requirePath(`04-generated/stitch/${page}/locks/copy-lock.md`);
     requirePath(`04-generated/stitch/${page}/locks/output-lock.md`);
@@ -34,7 +34,9 @@ if (stage === 'generation' || stage === 'repair' || stage === 'handoff') {
 if (stage === 'repair' || stage === 'handoff') {
   if (page) {
     requirePath(`02-pages/${page}/responsive-plan.md`);
-    requirePath(`04-generated/stitch/${page}/${breakpoint}/screen.html`);
+    requirePath(`04-generated/stitch/${page}/${page}.${breakpoint}.html`);
+    requirePath(`04-generated/stitch/${page}/${page}.${breakpoint}.png`);
+    requirePath(`04-generated/stitch/${page}/${page}.${breakpoint}.meta.json`);
   }
 }
 if (stage === 'handoff') {

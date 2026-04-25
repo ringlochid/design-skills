@@ -11,7 +11,7 @@ Goal: transform source truth into deterministic generation inputs.
 
 1. Read product brief, page spec, design system, and relevant references.
 2. Verify source truth is good enough; stop if product/page semantics are missing.
-3. Build tool prompt pack under `04-generated/<tool>/<page>/<breakpoint>/`.
+3. Build a flat tool prompt pack under `04-generated/<tool>/<page>/` using names like `<page>.<breakpoint>.prompt.md`.
 4. Write locks that prevent semantic/copy/output drift.
 5. Hand off to the matching tool adapter.
 

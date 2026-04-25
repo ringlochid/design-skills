@@ -239,7 +239,7 @@ export async function resolveDesignPaths({ projectRoot = null, configFile = null
     : (stitchRoot ? path.join(stitchRoot, 'state.json') : (outdir ? inferStatePath({ outdir }) : null));
   const resolvedOutdir = outdir
     ? path.resolve(outdir)
-    : (stitchRoot ? path.join(stitchRoot, breakpoint) : null);
+    : stitchRoot;
   return {
     config,
     projectRoot: config.projectRoot,
@@ -675,7 +675,7 @@ function findLikelyStitchRoot(targetPath) {
   for (let i = 0; i < parts.length - 1; i += 1) {
     const part = parts[i];
     const next = parts[i + 1];
-    // v2 repo structure only: .../04-generated/stitch/<page>/<breakpoint>
+    // v2 repo structure only: .../04-generated/stitch/<page>[/artifact]
     if (part === 'stitch' && parts[i - 1] === '04-generated' && parts[i + 1]) {
       return `${path.sep}${path.join(...parts.slice(0, i + 2))}`;
     }
@@ -2448,10 +2448,19 @@ export async function renderHtmlPreview({ htmlPath, outPath, fullOutPath, viewpo
   }
 }
 
+export function artifactStemForOutdir(outdir, meta = {}, options = {}) {
+  const breakpoint = normalizeBreakpointName(meta.breakpoint || breakpointForDeviceType(meta.deviceType || 'DESKTOP'), 'agnostic');
+  const pageKey = slugifyPageToken(options.pageKey || meta.pageKey || inferPageKeyFromStatePath(options.stateFile) || path.basename(path.resolve(outdir)) || 'page');
+  const theme = slugifyPageToken(options.theme || meta.theme || meta.themeName || '');
+  const themePart = theme && !['default', 'single', 'single-theme'].includes(theme) ? `.${theme}` : '';
+  return `${pageKey}${themePart}.${breakpoint}`;
+}
+
 export async function reviewLocalHtmlArtifacts({ htmlPath, outdir, meta = {}, viewport = defaultViewportForDeviceType(meta.deviceType), options = {} }) {
   await ensureDir(outdir);
   const resolvedHtmlPath = path.resolve(htmlPath);
-  const finalHtmlPath = path.join(path.resolve(outdir), 'screen.html');
+  const stem = artifactStemForOutdir(outdir, meta, options);
+  const finalHtmlPath = path.join(path.resolve(outdir), `${stem}.html`);
   if (resolvedHtmlPath !== finalHtmlPath) {
     await fs.copyFile(resolvedHtmlPath, finalHtmlPath);
   }
@@ -2466,15 +2475,15 @@ export async function reviewLocalHtmlArtifacts({ htmlPath, outdir, meta = {}, vi
       };
     }
   };
-  const imagePath = path.join(outdir, 'screen.png');
-  const fullImagePath = path.join(outdir, 'screen-full.png');
+  const imagePath = path.join(outdir, `${stem}.png`);
+  const fullImagePath = path.join(outdir, `${stem}.full.png`);
   const renderMeta = await renderHtmlPreview({ htmlPath: finalHtmlPath, outPath: imagePath, fullOutPath: fullImagePath, viewport });
   const deviceType = meta.deviceType || 'DESKTOP';
   const semanticCheck = await safeEvaluate('semantic-check', () => evaluateSemanticRulesForHtml({ htmlPath: finalHtmlPath, outdir, stateFile: options.stateFile || null, deviceType }));
   const preApprovalLockCheck = await safeEvaluate('pre-approval-lock-check', () => evaluatePreApprovalLockForHtml({ htmlPath: finalHtmlPath, outdir, stateFile: options.stateFile || null, preApprovalLockFile: options.preApprovalLockFile || null, deviceType }));
   const copyLockCheck = await safeEvaluate('copy-lock-check', () => evaluateCopyLockForHtml({ htmlPath: finalHtmlPath, outdir, stateFile: options.stateFile || null, copyLockFile: options.copyLockFile || null, deviceType }));
   const outputLockCheck = await safeEvaluate('output-lock-check', () => evaluateOutputLockForHtml({ htmlPath: finalHtmlPath, outdir, stateFile: options.stateFile || null, outputLockFile: options.outputLockFile || null, deviceType }));
-  const metaPath = path.join(outdir, 'meta.json');
+  const metaPath = path.join(outdir, `${stem}.meta.json`);
   const existingMeta = await readJsonIfExists(metaPath, {});
   const localPatchApplied = Boolean(options.localPatchApplied || existingMeta.localPatchApplied);
   const derivedFromScreenId = localPatchApplied
@@ -2775,7 +2784,8 @@ export async function diagnoseLocalHtmlLayout({ htmlPath, outdir, deviceType = '
 export async function exportScreenArtifacts(screen, outdir, meta = {}, viewport = defaultViewportForDeviceType(meta.deviceType), options = {}) {
   const htmlUrl = await screen.getHtml();
   await ensureDir(outdir);
-  const htmlPath = path.join(outdir, 'screen.html');
+  const stem = artifactStemForOutdir(outdir, meta, options);
+  const htmlPath = path.join(outdir, `${stem}.html`);
   await fetchToFile(htmlUrl, htmlPath);
   return await reviewLocalHtmlArtifacts({
     htmlPath,

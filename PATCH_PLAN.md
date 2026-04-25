@@ -63,9 +63,9 @@ Canonical source truth:
 Canonical generated/runtime/review/handoff:
 
 ```text
-04-generated/stitch/<page>/<breakpoint>/screen.html
-04-generated/stitch/<page>/<breakpoint>/screen.png
-04-generated/stitch/<page>/<breakpoint>/meta.json
+04-generated/stitch/<page>/<page>.<breakpoint>.html
+04-generated/stitch/<page>/<page>.<breakpoint>.png
+04-generated/stitch/<page>/<page>.<breakpoint>.meta.json
 04-generated/stitch/<page>/state.json
 04-generated/stitch/<page>/locks/*.md
 04-generated/stitch/<page>/references/*.md
@@ -239,7 +239,7 @@ Inputs:
 Outputs:
 
 ```text
-04-generated/<tool>/<page>/<breakpoint>/prompt.md
+04-generated/<tool>/<page>/<page>.<breakpoint>.prompt.md
 04-generated/<tool>/<page>/locks/pre-approval-lock.md
 04-generated/<tool>/<page>/locks/copy-lock.md
 04-generated/<tool>/<page>/locks/output-lock.md
