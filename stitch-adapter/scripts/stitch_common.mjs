@@ -1045,7 +1045,7 @@ function buildLockMarkdown({
 export function buildPreApprovalLockMarkdown(guidance = {}) {
   return buildLockMarkdown({
     title: 'Pre-approval lock',
-    siteTitle: guidance.siteTitle || 'Product',
+    siteTitle: guidance.siteTitle ?? null,
     pageTitle: guidance.pageTitle || guidance.pageName || null,
     primaryNavLabels: guidance.navLabels || [],
     searchPlaceholder: guidance.searchPlaceholder || null,
@@ -1059,7 +1059,7 @@ export function buildPreApprovalLockMarkdown(guidance = {}) {
 export function buildCopyLockMarkdown(guidance = {}) {
   return buildLockMarkdown({
     title: 'Copy lock',
-    siteTitle: guidance.siteTitle || 'Product',
+    siteTitle: guidance.siteTitle ?? null,
     pageTitle: guidance.pageTitle || guidance.pageName || null,
     primaryNavLabels: guidance.navLabels || [],
     searchPlaceholder: guidance.searchPlaceholder || null,
@@ -1073,7 +1073,7 @@ export function buildCopyLockMarkdown(guidance = {}) {
 export function buildOutputLockMarkdown(guidance = {}) {
   return buildLockMarkdown({
     title: 'Output lock',
-    siteTitle: guidance.siteTitle || 'Product',
+    siteTitle: guidance.siteTitle ?? null,
     pageTitle: guidance.pageTitle || guidance.pageName || null,
     primaryNavLabels: guidance.navLabels || [],
     searchPlaceholder: guidance.searchPlaceholder || null,
@@ -1270,7 +1270,8 @@ function extractUnexpectedTopFramingCandidates(html, lock = {}) {
   const source = stripNonUserFacingHtmlTextArtifacts(html)
     .replace(/<head\b[^>]*>[\s\S]*?<\/head>/i, ' ');
   const keySectionHeadings = (lock?.keySectionHeadings || []).map((item) => String(item || '').trim()).filter(Boolean);
-  if (!keySectionHeadings.length) return [];
+  const framingAnchors = [lock?.siteTitle, ...(lock?.primaryNavLabels || [])].map((item) => String(item || '').trim()).filter(Boolean);
+  if (!keySectionHeadings.length || !framingAnchors.length) return [];
   const lowerSource = source.toLowerCase();
   const boundaryIndex = keySectionHeadings
     .map((heading) => lowerSource.indexOf(heading.toLowerCase()))

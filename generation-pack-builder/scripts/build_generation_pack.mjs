@@ -44,21 +44,35 @@ function titleFromMarkdown(markdown, fallback) {
 }
 
 function headingsFromMarkdown(markdown) {
+  const scaffold = new Set(['page goal','primary user journey','sections','data/actions','constraints','jobs dashboard content','product goal','target users','core workflows','success criteria','assumptions / open questions']);
   return [...String(markdown || '').matchAll(/^#{1,3}\s+(.+)$/gm)]
     .map((m) => m[1].trim())
-    .filter((value) => value && !/^todo$/i.test(value))
-    .slice(0, 8);
+    .filter((value) => value && !/^todo$/i.test(value) && !scaffold.has(value.toLowerCase()))
+    .slice(0, 6);
 }
 
-function nounsFromText(text) {
-  const stop = new Set(['product','brief','design','system','page','spec','users','goal','constraints','core','workflows','target','section','sections','states','content']);
-  const words = String(text || '').match(/\b[A-Za-z][A-Za-z0-9-]{3,}\b/g) || [];
+function bulletLabelsFromMarkdown(markdown) {
+  return [...String(markdown || '').matchAll(/^[-*]\s+(.+)$/gm)]
+    .map((m) => m[1].trim().replace(/[.:;]$/g, ''))
+    .filter((value) => value && value.length >= 3 && value.length <= 48)
+    .filter((value) => !/^(none|n\/?a|todo|draft required)/i.test(value));
+}
+
+function lockTermsFromSource({ spec = '', content = '' } = {}) {
+  const stopPhrases = new Set(['last updated timestamp']);
+  const candidates = [
+    ...bulletLabelsFromMarkdown(content),
+    ...bulletLabelsFromMarkdown(spec),
+  ];
   const seen = [];
-  for (const word of words) {
-    const normalized = word.toLowerCase();
-    if (stop.has(normalized) || seen.some((item) => item.toLowerCase() === normalized)) continue;
-    seen.push(word);
-    if (seen.length >= 12) break;
+  for (const item of candidates) {
+    const clean = item.replace(/`/g, '').trim();
+    const lower = clean.toLowerCase();
+    if (stopPhrases.has(lower)) continue;
+    if (/^(header|sections?|constraints?|data\/actions?|page goal|primary user journey)$/i.test(clean)) continue;
+    if (seen.some((value) => value.toLowerCase() === lower)) continue;
+    seen.push(clean);
+    if (seen.length >= 10) break;
   }
   return seen;
 }
@@ -80,12 +94,12 @@ await ensureDir(locksDir);
 
 const pageTitle = titleFromMarkdown(spec, pageKey.replace(/-/g, ' '));
 const siteTitle = titleFromMarkdown(brief, 'Product');
-const coreHeadings = headingsFromMarkdown(spec).concat(headingsFromMarkdown(content)).slice(0, 8);
-const requiredNouns = nounsFromText(`${brief}\n${spec}\n${content}\n${states}`).slice(0, 12);
-if (!requiredNouns.length) throw new Error('Unable to derive meaningful required nouns for generation locks. Add concrete product/page source truth first.');
+const coreHeadings = headingsFromMarkdown(spec).concat(headingsFromMarkdown(content)).slice(0, 6);
+const requiredNouns = lockTermsFromSource({ spec, content }).slice(0, 10);
+if (!requiredNouns.length) throw new Error('Unable to derive meaningful visible lock terms. Add concrete page content/actions first.');
 
 const lockGuidance = {
-  siteTitle,
+  siteTitle: null,
   pageTitle,
   pageName: pageTitle,
   coreHeadings,
@@ -124,7 +138,7 @@ ${spec}
 page-specific guardrails:
 - Preserve product semantics from 00-product/brief.md.
 - Preserve page-specific actions, states, and constraints from 02-pages/${pageKey}/spec.md.
-- Required nouns: ${requiredNouns.join(', ')}.
+- Required visible terms: ${requiredNouns.join(', ')}.
 
 use this exact visible copy:
 ${content || 'Use only source-grounded concise copy from the product brief and page spec; do not invent unrelated marketing claims.'}
