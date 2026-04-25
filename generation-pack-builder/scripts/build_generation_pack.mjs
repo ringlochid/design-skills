@@ -147,7 +147,7 @@ ${spec}
 
 ${states || '(none)'}
 `;
-const promptFile = path.join(outdir, `${pageKey}.${breakpoint}.prompt.md`);
+const promptFile = path.join(outdir, `${breakpoint}.prompt.md`);
 await fs.writeFile(promptFile, prompt);
 
 console.log(JSON.stringify({

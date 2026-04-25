@@ -79,10 +79,8 @@ source truth → generation package → tool adapter → review gates → respon
   <page>-review.md
 
 06-handoff/
-  <page>-implementation-brief.md
-  component-map.md
-  asset-list.md
-  artifact-index.md
+  <page>.md
+  index.md              # optional only for multi-page handoffs
 ```
 
 ## Migration plan from current `design-flow`

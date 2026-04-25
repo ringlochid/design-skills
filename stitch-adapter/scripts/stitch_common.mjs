@@ -2450,10 +2450,9 @@ export async function renderHtmlPreview({ htmlPath, outPath, fullOutPath, viewpo
 
 export function artifactStemForOutdir(outdir, meta = {}, options = {}) {
   const breakpoint = normalizeBreakpointName(meta.breakpoint || breakpointForDeviceType(meta.deviceType || 'DESKTOP'), 'agnostic');
-  const pageKey = slugifyPageToken(options.pageKey || meta.pageKey || inferPageKeyFromStatePath(options.stateFile) || path.basename(path.resolve(outdir)) || 'page');
   const theme = slugifyPageToken(options.theme || meta.theme || meta.themeName || '');
-  const themePart = theme && !['default', 'single', 'single-theme'].includes(theme) ? `.${theme}` : '';
-  return `${pageKey}${themePart}.${breakpoint}`;
+  const themePart = theme && !['default', 'single', 'single-theme'].includes(theme) ? `${theme}.` : '';
+  return `${themePart}${breakpoint}`;
 }
 
 export async function reviewLocalHtmlArtifacts({ htmlPath, outdir, meta = {}, viewport = defaultViewportForDeviceType(meta.deviceType), options = {} }) {

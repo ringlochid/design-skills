@@ -5,14 +5,14 @@ description: Produce a minimal implementation handoff index from approved genera
 
 # Design Handoff Release
 
-Goal: make the handoff thin and implementation-friendly. Prefer an artifact index over re-summarizing the whole design repo.
+Goal: keep handoff thin. One small handoff file should point to approved artifacts; do not restate the whole design repo.
 
 ## Default workflow
 
 1. Verify the page has a review verdict and accepted generated artifacts.
 2. List the design system source and active theme source.
 3. For each accepted page/breakpoint/theme, list only the artifact paths needed to build from it.
-4. Write/update `06-handoff/artifact-index.md`.
+4. Write/update `06-handoff/<page>.md`.
 5. Add notes only for blockers, known compromises, or missing artifacts.
 
 ## Minimal output contract
@@ -20,35 +20,32 @@ Goal: make the handoff thin and implementation-friendly. Prefer an artifact inde
 Default handoff shape:
 
 ```md
-# Design handoff
+# <page-name> handoff
 
 Design system: `01-system/DESIGN.md`
 Theme: `01-system/themes/<theme>.md` or `single-theme`
-
-## <page-name>
+Review: `05-review/<page>-review.md`
 
 | Theme | Breakpoint | HTML | Screenshot | Meta |
 | --- | --- | --- | --- | --- |
-| single-theme | mobile | `04-generated/stitch/<page>/<page>.mobile.html` | `04-generated/stitch/<page>/<page>.mobile.png` | `04-generated/stitch/<page>/<page>.mobile.meta.json` |
-| single-theme | tablet | `04-generated/stitch/<page>/<page>.tablet.html` | `04-generated/stitch/<page>/<page>.tablet.png` | `04-generated/stitch/<page>/<page>.tablet.meta.json` |
-| single-theme | desktop | `04-generated/stitch/<page>/<page>.desktop.html` | `04-generated/stitch/<page>/<page>.desktop.png` | `04-generated/stitch/<page>/<page>.desktop.meta.json` |
+| single-theme | mobile | `04-generated/stitch/<page>/mobile.html` | `04-generated/stitch/<page>/mobile.png` | `04-generated/stitch/<page>/mobile.meta.json` |
+| single-theme | tablet | `04-generated/stitch/<page>/tablet.html` | `04-generated/stitch/<page>/tablet.png` | `04-generated/stitch/<page>/tablet.meta.json` |
+| single-theme | desktop | `04-generated/stitch/<page>/desktop.html` | `04-generated/stitch/<page>/desktop.png` | `04-generated/stitch/<page>/desktop.meta.json` |
 ```
 
 For multiple themes, keep the same flat folder and include the theme in the filename:
 
-- `04-generated/stitch/<page>/<page>.<theme>.mobile.html`
-- `04-generated/stitch/<page>/<page>.<theme>.desktop.png`
-- `04-generated/stitch/<page>/<page>.<theme>.tablet.meta.json`
+- `04-generated/stitch/<page>/<theme>.mobile.html`
+- `04-generated/stitch/<page>/<theme>.desktop.png`
+- `04-generated/stitch/<page>/<theme>.tablet.meta.json`
 
-Optional links, only when useful:
+## Handoff folder rule
 
-- review verdict: `05-review/<page>-review.md`
-- source truth: `00-product/brief.md`, `02-pages/<page>/spec.md`, `01-system/DESIGN.md`
-- responsive plan: `02-pages/<page>/responsive-plan.md`
+Keep `06-handoff/` simple:
 
-## Avoid by default
-
-Do not generate a separate implementation brief, component map, asset list, or acceptance checklist unless the user asks or implementation genuinely needs it.
+- `06-handoff/<page>.md` for each page handoff.
+- Optional `06-handoff/index.md` only when multiple pages need a table of contents.
+- No component-map / asset-list / implementation-brief files unless the user asks.
 
 ## Stop boundary
 

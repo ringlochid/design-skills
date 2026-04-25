@@ -38,7 +38,7 @@ const readyRepo = await makeRepo({ ready: true, responsiveReady: true });
 run('node', ['design-repo-init/scripts/design_repo_preflight.mjs', '--project-root', readyRepo]);
 run('node', ['generation-pack-builder/scripts/build_generation_pack.mjs', '--project-root', readyRepo, '--page', 'dashboard', '--tool', 'stitch', '--breakpoint', 'desktop']);
 const outdir = path.join(readyRepo, '04-generated/stitch/dashboard');
-const promptFile = path.join(outdir, 'dashboard.desktop.prompt.md');
+const promptFile = path.join(outdir, 'desktop.prompt.md');
 if (await fs.stat(path.join(readyRepo, '04-generated/stitch/dashboard/desktop')).then(() => true).catch(() => false)) {
   throw new Error('generation pack created deprecated breakpoint subdirectory');
 }
