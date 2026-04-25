@@ -5,37 +5,38 @@ Goal: replace the monolithic `design-flow` skill with a design-repo-first skill 
 Core principle:
 
 ```text
-source truth → generation package → tool adapter → review gates → responsive repair → minimal handoff
+source truth → generation package → tool adapter → review gates → responsive repair → handoff release
 ```
 
 ## Skill set
 
 ### Core router/foundation
 
-1. `design-repo-router` — routes ambiguous design requests to the right focused skill.
-2. `design-workflow` — conductor for a full end-to-end run.
-3. `design-repo-init` — creates/validates the design repo structure and classifies source readiness.
+1. `design-repo-router` — routes design requests to the right leaf skill.
+2. `design-repo-init` — creates/validates the design repo structure and classifies source readiness.
+3. `product-source-reader` — extracts product intent from ideas, docs, architecture notes, and references.
+4. `backend-capability-reader` — extracts UI-relevant capabilities/constraints from backend/API/code.
+5. `reference-research` — finds/summarizes external product/design references when useful.
 
-### Source authoring / evidence
+### Source authoring
 
-4. `product-brief-writer` — reads source material and writes `00-product/brief.md`.
-5. `backend-capability-reader` — extracts UI-relevant capabilities/constraints from backend/API/code.
-6. `reference-research` — finds/summarizes external product/design references when useful.
+6. `product-brief-writer` — writes `00-product/brief.md`.
 7. `page-spec-writer` — writes `02-pages/<page>/spec.md`, states, content, data/actions.
-8. `design-system-writer` — handles visual direction and writes `01-system/DESIGN.md`, themes, tokens, component notes.
+8. `design-system-writer` — writes `01-system/DESIGN.md`, themes, tokens, component notes.
+9. `design-direction-brainstorm` — optional divergent direction generation before design system lock.
 
 ### Generation/tooling
 
-9. `generation-pack-builder` — turns source truth into prompt packs/locks for a tool adapter.
-10. `stitch-adapter` — owns Stitch reference sync/generate/edit/export and runtime IDs.
+10. `generation-pack-builder` — turns source truth into prompt packs/locks for a tool adapter.
+11. `stitch-adapter` — owns Stitch reference sync/generate/edit/export and runtime IDs.
+12. `visual-asset-generator` — optional image generation for moodboards/assets, not source truth.
 
-### Review/responsive/repair
+### Review/responsive/release
 
-11. `design-review-gate` — reviews generated output and decides accept/source-fix/regenerate.
-12. `responsive-plan-writer` — writes breakpoint contracts and separates remap from repair.
-13. `layout-repair-loop` — bounded screenshot/DOM/layout repair loop.
-
-Handoff is not a separate skill. After review passes, the agent writes `06-handoff/<page>.md` manually.
+13. `design-review-gate` — reviews generated output and decides accept/source-fix/regenerate.
+14. `responsive-plan-writer` — writes breakpoint contracts and separates remap from repair.
+15. `layout-repair-loop` — bounded screenshot/DOM/layout repair loop.
+16. `design-handoff-release` — creates implementation-ready handoff package.
 
 `design-repo-common/` is included as shared infrastructure, not an installable skill.
 
@@ -102,5 +103,5 @@ Handoff is not a separate skill. After review passes, the agent writes `06-hando
 - Generated output never becomes source truth unless explicitly merged back by a source-authoring skill.
 - Stitch is one adapter, not the design workflow.
 - Parent agent owns source truth and promotion decisions.
-- Subagents are for backend extraction, reference research, divergent synthesis, and independent review only.
-- Loops require explicit evaluators: screenshots, DOM checks, review verdicts, or minimal handoff completeness.
+- Subagents are for brainstorming, source synthesis, backend extraction, reference research, and independent review only.
+- Loops require explicit evaluators: screenshots, DOM checks, review verdicts, or handoff completeness.

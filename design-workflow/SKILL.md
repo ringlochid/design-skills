@@ -10,14 +10,14 @@ Goal: be the conductor for one full design run while leaf skills keep their narr
 ## Required order
 
 1. Initialize/inspect the design repo with `design-repo-init`.
-2. Ingest source material directly while writing the brief; use `backend-capability-reader` or `reference-research` only when they add real evidence.
+2. Ingest source material with `product-source-reader`, `backend-capability-reader`, or `reference-research` as needed.
 3. Write source truth: product brief, page spec, design system.
 4. Build generation pack and locks.
 5. Run tool adapter only after explicit approval for external mutations.
 6. Review generated artifacts.
 7. Write responsive plan before target breakpoint remap/repair.
 8. Run layout repair only on a valid target shell.
-9. Review again, then write the minimal handoff manually as `06-handoff/<page>.md`.
+9. Review again, then hand off.
 
 ## Promotion rules
 
@@ -43,17 +43,6 @@ Read `../design-repo-common/references/source-truth-rules.md` before promotion d
 
 Before generating, inspect current source truth and generated artifacts. Classify the next step as source-missing, source-fix, reference-sync, fresh-generation, edit/remap, layout-repair, review, or handoff. Choose the smallest lane that can make progress. Sync references before blind regeneration when a shared Stitch project exists. Require primary review before non-primary remap. Enter layout repair only after a real target breakpoint shell exists.
 
-## Minimal handoff
-
-No separate handoff skill or generator is required. After review passes, write `06-handoff/<page>.md` manually:
-
-- design system: `01-system/DESIGN.md`
-- theme: `single-theme` or `01-system/themes/<theme>.md`
-- review: `05-review/<page>-review.md`
-- artifact table: breakpoint, HTML, screenshot, meta
-
-Only add `06-handoff/index.md` for multi-page projects.
-
 ## Tool placement
 
-Use web search for external/category context, browser for live/generated HTML evidence, image analysis for screenshots/references, image generation only for optional reference assets, and subagents only for divergent synthesis or independent critique.
+Use web search for external/category context, browser for live/generated HTML evidence, image analysis for screenshots/references, image generation only through `visual-asset-generator`, and subagents only for divergent synthesis or independent critique.

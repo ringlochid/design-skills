@@ -30,7 +30,7 @@ Use browser screenshots/runtime inspection when HTML or live UI exists. Use imag
 
 ## Stop boundary
 
-Do not patch layout here. Hand off to source-writing, generation, responsive, or repair skills. If verdict is `accept`, the agent may manually write the minimal `06-handoff/<page>.md`.
+Do not patch layout here. Hand off to source-writing, generation, responsive, or repair skills.
 
 ## Output shape
 
