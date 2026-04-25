@@ -34,4 +34,4 @@ Do not fabricate product goals, page semantics, workflows, or design-system clai
 - `scripts/design_repo_bootstrap_project.mjs`
 - `scripts/design_repo_bootstrap_page.mjs`
 
-Legacy migration helpers remain available as `design_flow_bootstrap_*`, but they write old paths and should not be used for normal v2 initialization. For legacy mapping, read `../design-repo-common/references/legacy-design-flow-migration.md`.
+Legacy bootstrap helpers were removed from the active pack. For manual mapping from old artifacts, read `../design-repo-common/references/legacy-design-flow-migration.md`.

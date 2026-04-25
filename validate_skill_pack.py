@@ -64,13 +64,13 @@ legacy_tokens = ['00-meta', '03-pages', 'exports/stitch']
 for fp in sorted(root.rglob('*')):
     if not fp.is_file() or '.git' in fp.parts: continue
     rel=str(fp.relative_to(root))
-    if rel in allowed_legacy or rel.startswith('design-repo-init/scripts/design_flow_'):
+    if rel in allowed_legacy:
         continue
     try: text=fp.read_text(errors='ignore')
     except Exception: continue
     for token in legacy_tokens:
         if token in text:
-            errs.append(f'{rel}: legacy token outside allowed migration/legacy helper: {token}')
+            errs.append(f'{rel}: legacy token outside allowed migration reference: {token}')
             break
 
 print(f'skills={len(skills)}')
