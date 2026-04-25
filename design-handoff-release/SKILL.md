@@ -1,30 +1,48 @@
 ---
 name: design-handoff-release
-description: Produce an implementation-ready design handoff package from approved design repo source truth and generated artifacts. Use when design artifacts are accepted and need to be delivered to frontend/build work.
+description: Produce a minimal implementation handoff index from approved generated design artifacts. Use when design artifacts are accepted and frontend/build work only needs page names, breakpoint HTML, screenshots, and essential review links.
 ---
 
 # Design Handoff Release
 
-Goal: package the design so implementation can proceed without reverse-engineering intent.
+Goal: make the handoff thin and implementation-friendly. Prefer an artifact index over re-summarizing the whole design repo.
 
-## Workflow
+## Default workflow
 
-1. Verify source truth, review verdicts, generated artifacts, responsive plan, and selected assets exist.
-2. Build an artifact index.
-3. Write implementation brief, component map, asset list, and acceptance checks.
-4. Include known compromises and open decisions.
-5. Run final browser/image sanity checks when visual artifacts exist.
+1. Verify the page has a review verdict and accepted generated artifacts.
+2. For each accepted breakpoint, list only the artifact paths needed to build from it.
+3. Write/update `06-handoff/artifact-index.md`.
+4. Add notes only for blockers, known compromises, or missing artifacts.
 
-## Outputs
+## Minimal output contract
 
-- `06-handoff/<page>-implementation-brief.md`
-- `06-handoff/component-map.md`
-- `06-handoff/asset-list.md`
-- `06-handoff/artifact-index.md`
+Default handoff shape:
+
+```md
+# Design handoff
+
+## <page-name>
+
+| Breakpoint | HTML | Screenshot | Meta |
+| --- | --- | --- | --- |
+| mobile | `04-generated/stitch/<page>/mobile/screen.html` | `.../screen.png` | `.../meta.json` |
+| tablet | `04-generated/stitch/<page>/tablet/screen.html` | `.../screen.png` | `.../meta.json` |
+| desktop | `04-generated/stitch/<page>/desktop/screen.html` | `.../screen.png` | `.../meta.json` |
+```
+
+Optional links, only when useful:
+
+- review verdict: `05-review/<page>-review.md`
+- source truth: `00-product/brief.md`, `02-pages/<page>/spec.md`, `01-system/DESIGN.md`
+- responsive plan: `02-pages/<page>/responsive-plan.md`
+
+## Avoid by default
+
+Do not generate a separate implementation brief, component map, asset list, or acceptance checklist unless the user asks or implementation genuinely needs it.
 
 ## Stop boundary
 
-Do not silently approve weak designs. If review evidence is missing, return to `design-review-gate`.
+Do not silently approve weak designs. If review evidence or breakpoint artifacts are missing, return to `design-review-gate` or the relevant generation/repair skill.
 
 ## Shared rules
 
