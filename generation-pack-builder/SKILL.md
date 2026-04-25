@@ -12,18 +12,17 @@ Goal: transform source truth into deterministic generation inputs.
 1. Read product brief, page spec, design system, and relevant references.
 2. Verify source truth is good enough; stop if product/page semantics are missing.
 3. Build a flat tool prompt pack under `04-generated/<tool>/<page>/` using names like `<breakpoint>.prompt.md`.
-4. Write locks that prevent semantic/copy/output drift.
+4. Write locks that prevent semantic and copy drift.
 5. Hand off to the matching tool adapter.
 
 ## Prompt lock layers
 
 - `pre-approval-lock.md` — product/page intent.
 - `copy-lock.md` — copy and content that must not drift.
-- `output-lock.md` — required output contract.
 
-## Scripts
+## Internal helper
 
-- `scripts/build_generation_pack.mjs`
+A pack-building helper may write the prompt and locks, but the skill output should stay at workflow level: source used, prompt path, lock paths, and next adapter.
 
 ## Output shape
 

@@ -7,7 +7,6 @@ import {
   ensureDir,
   buildPreApprovalLockMarkdown,
   buildCopyLockMarkdown,
-  buildOutputLockMarkdown,
 } from '../../stitch-adapter/scripts/stitch_common.mjs';
 
 const args = parseArgs(process.argv);
@@ -38,24 +37,53 @@ async function readOptional(rel) {
   try { return await fs.readFile(path.join(projectRoot, rel), 'utf8'); } catch { return ''; }
 }
 
+function cleanDisplayTitle(value, fallback) {
+  const cleaned = String(value || fallback || '')
+    .replace(/(page\s+spec|specification|content)/ig, '')
+    .replace(/\s+[-–—:]\s*$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+  return (cleaned || fallback || 'Untitled').slice(0, 80);
+}
+
+function explicitPageTitle(markdown) {
+  const match = String(markdown || '').match(/^[-*]\s*(?:page\s+title|visible\s+page\s+title|display\s+title)\s*:\s*(.+)$/im);
+  return match ? match[1].trim() : null;
+}
+
 function titleFromMarkdown(markdown, fallback) {
+  const explicit = explicitPageTitle(markdown);
+  if (explicit) return cleanDisplayTitle(explicit, fallback);
   const match = String(markdown || '').match(/^#\s+(.+)$/m);
-  return match ? match[1].trim().slice(0, 80) : fallback;
+  return cleanDisplayTitle(match ? match[1] : fallback, fallback);
 }
 
 function headingsFromMarkdown(markdown) {
-  const scaffold = new Set(['page goal','primary user journey','sections','data/actions','constraints','jobs dashboard content','product goal','target users','core workflows','success criteria','assumptions / open questions']);
+  const scaffold = new Set(['page goal','primary user journey','sections','data/actions','constraints','jobs dashboard content','product goal','target users','core workflows','success criteria','assumptions / open questions','required visible labels','header copy','kpi card copy','metadata','source truth','notes','acceptance criteria']);
   return [...String(markdown || '').matchAll(/^#{1,3}\s+(.+)$/gm)]
     .map((m) => m[1].trim())
     .filter((value) => value && !/^todo$/i.test(value) && !scaffold.has(value.toLowerCase()))
     .slice(0, 6);
 }
 
+function normalizeVisibleBullet(value) {
+  let clean = String(value || '').trim().replace(/[.;]$/g, '');
+  const field = clean.match(/^([^:]{2,32}):\s*(.+)$/);
+  if (field) {
+    const label = field[1].trim().toLowerCase();
+    const rhs = field[2].trim();
+    if (/^(page title|visible page title|display title|product name|module|label|heading|section|cta|metric|card|tab)$/.test(label)) clean = rhs;
+    else if (/^(route|role|owner|source|status|breakpoint|screen id|project id|updated|notes?|metadata)$/.test(label)) return '';
+  }
+  if (/^(none|n\/?a|todo|draft required)/i.test(clean)) return '';
+  if (/^(route|role|owner|source|status|breakpoint|screen id|project id|updated|metadata)/i.test(clean)) return '';
+  return clean.replace(/`/g, '').trim();
+}
+
 function bulletLabelsFromMarkdown(markdown) {
   return [...String(markdown || '').matchAll(/^[-*]\s+(.+)$/gm)]
-    .map((m) => m[1].trim().replace(/[.:;]$/g, ''))
-    .filter((value) => value && value.length >= 3 && value.length <= 48)
-    .filter((value) => !/^(none|n\/?a|todo|draft required)/i.test(value));
+    .map((m) => normalizeVisibleBullet(m[1]))
+    .filter((value) => value && value.length >= 3 && value.length <= 48);
 }
 
 function lockTermsFromSource({ spec = '', content = '' } = {}) {
@@ -111,55 +139,41 @@ const lockGuidance = {
 };
 const preApprovalLockPath = path.join(locksDir, 'pre-approval-lock.md');
 const copyLockPath = path.join(locksDir, 'copy-lock.md');
-const outputLockPath = path.join(locksDir, 'output-lock.md');
 await fs.writeFile(preApprovalLockPath, buildPreApprovalLockMarkdown(lockGuidance));
 await fs.writeFile(copyLockPath, buildCopyLockMarkdown(lockGuidance));
-await fs.writeFile(outputLockPath, buildOutputLockMarkdown(lockGuidance));
 
-const prompt = `# stitch prompt
+const prompt = `Design the ${breakpoint} breakpoint for ${pageTitle}.
 
-copy locks:
-- pre-approval: ${path.relative(outdir, preApprovalLockPath)}
-- copy: ${path.relative(outdir, copyLockPath)}
-- output: ${path.relative(outdir, outputLockPath)}
+Non-negotiables:
+- Product name: ${siteTitle}
+- Page title: ${pageTitle}
+- Do not invent alternate product or page names.
+- Route candidate: /${pageKey}
+- Role access: use roles/permissions only when explicitly described in source truth.
+- Theme strategy: source-truth DESIGN.md.
+- Preserve these visible page terms: ${requiredNouns.join(', ')}.
 
-goal:
-Generate the ${breakpoint} breakpoint for ${pageTitle}.
-
-responsive intent:
+Responsive intent:
 ${responsive || `Use the ${breakpoint} breakpoint contract from the page spec. Preserve hierarchy and adapt layout intentionally.`}
 
-theme intent:
+Visual direction:
 ${design}
 
-semantic focus:
+Layout and semantic requirements:
 ${spec}
 
-page-specific guardrails:
-- Preserve product semantics from 00-product/brief.md.
-- Preserve page-specific actions, states, and constraints from 02-pages/${pageKey}/spec.md.
-- Required visible terms: ${requiredNouns.join(', ')}.
-
-use this exact visible copy:
+Exact visible copy and labels:
 ${content || 'Use only source-grounded concise copy from the product brief and page spec; do not invent unrelated marketing claims.'}
 
-theme strategy: source-truth DESIGN.md
-role access: use roles/permissions only when explicitly described in source truth
-route candidate: /${pageKey}
-
-source material:
-
-## Product brief
-
-${brief}
-
-## Page spec
-
-${spec}
-
-## States
-
+States to account for:
 ${states || '(none)'}
+
+Avoid:
+- generic analytics landing pages
+- marketing hero sections
+- placeholder charts or lorem ipsum
+- unrelated business, finance, ecommerce, CRM, or social metrics
+- debug notes, scaffold headings, or implementation commentary in the visible UI
 `;
 const promptFile = path.join(outdir, `${breakpoint}.prompt.md`);
 await fs.writeFile(promptFile, prompt);
@@ -172,5 +186,4 @@ console.log(JSON.stringify({
   locksDir,
   preApprovalLockFile: preApprovalLockPath,
   copyLockFile: copyLockPath,
-  outputLockFile: outputLockPath,
 }, null, 2));

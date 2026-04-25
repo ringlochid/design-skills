@@ -8,40 +8,19 @@ import { spawn } from 'node:child_process';
 import { createServer as createHttpServer } from 'node:http';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
+import { loadStitchSdk } from './stitch_sdk.mjs';
+import { parseArgs, slugifyPageToken, pathExists, ensureDir, fetchToFile, readJsonIfExists, writeJson, patchJson } from './file_utils.mjs';
+import { renderHtmlPreview } from './render_local.mjs';
+import { normalizeDeviceType, breakpointForDeviceType, defaultViewportForDeviceType, viewportOptionsFromArgs } from './device_viewport.mjs';
+import { buildLayoutDiagnostics, applyAutomatedLayoutFix } from './layout_diagnostics.mjs';
+export { buildLayoutDiagnostics, applyAutomatedLayoutFix } from './layout_diagnostics.mjs';
+export { normalizeDeviceType, breakpointForDeviceType, defaultViewportForDeviceType, viewportOptionsFromArgs } from './device_viewport.mjs';
+export { renderHtmlPreview } from './render_local.mjs';
+export { parseArgs, slugifyPageToken, workspaceRoot, pathExists, ensureDir, fetchToFile, readJsonIfExists, writeJson, patchJson } from './file_utils.mjs';
+export { loadStitchSdk, availableApiKeys, createSdk, isRateLimitLikeError, withKeyFallback, normalizeStitchModelId, createOrOpenStitchProject } from './stitch_sdk.mjs';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-
-export function parseArgs(argv) {
-  const args = {};
-  for (let i = 2; i < argv.length; i += 1) {
-    const key = argv[i];
-    if (!key.startsWith('--')) continue;
-    const value = argv[i + 1] && !argv[i + 1].startsWith('--') ? argv[++i] : true;
-    args[key.slice(2)] = value;
-  }
-  return args;
-}
-
-export function workspaceRoot() {
-  return path.resolve(__dirname, '../../..');
-}
-
-function slugifyPageToken(value) {
-  return String(value || '')
-    .trim()
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-}
-
-async function pathExists(targetPath) {
-  try {
-    await fs.access(targetPath);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function normalizeOptionalPath(root, value) {
   if (!value) return null;
@@ -105,8 +84,8 @@ export async function loadDesignProjectConfig({ projectRoot = null, configFile =
     repoAwarenessMode: 'inspect-only',
     designSystemMode: 'create-new',
     stitch: {
-      globalSessionIndex: '04-generated/stitch/stitch-sessions.json',
-      projectRuntime: '04-generated/stitch/project.json',
+      globalSessionIndex: null,
+      projectRuntime: null,
       generatedRoot: '04-generated/stitch',
     },
     repoAware: {
@@ -236,7 +215,7 @@ export async function resolveDesignPaths({ projectRoot = null, configFile = null
   const stitchRoot = resolvedPage && generatedRoot ? path.join(generatedRoot, resolvedPage.pageKey) : null;
   const resolvedStateFile = stateFile
     ? path.resolve(stateFile)
-    : (stitchRoot ? path.join(stitchRoot, 'state.json') : (outdir ? inferStatePath({ outdir }) : null));
+    : (stitchRoot ? path.join(stitchRoot, 'runtime', 'state.json') : (outdir ? inferStatePath({ outdir }) : null));
   const resolvedOutdir = outdir
     ? path.resolve(outdir)
     : stitchRoot;
@@ -251,14 +230,17 @@ export async function resolveDesignPaths({ projectRoot = null, configFile = null
     stitchRoot,
     outdir: resolvedOutdir,
     stateFile: resolvedStateFile,
-    globalSessionIndexPath: config.stitch?.globalSessionIndexPath || null,
+    globalSessionIndexPath: null,
   };
 }
 
 export async function loadProjectRuntime({ projectRoot = null, config = null, startPath = null } = {}) {
   const activeConfig = config || await loadDesignProjectConfig({ projectRoot, startPath });
-  const runtimePath = activeConfig?.stitch?.projectRuntimePath
-    || (activeConfig?.runtimeRoot ? path.join(activeConfig.runtimeRoot, 'stitch-project.json') : null);
+  const startProjectRoot = startPath ? findLikelyStitchRoot(startPath) : null;
+  const pageRuntimePath = startProjectRoot ? path.join(startProjectRoot, 'runtime', 'project.json') : null;
+  const runtimePath = pageRuntimePath
+    || activeConfig?.stitch?.projectRuntimePath
+    || (activeConfig?.runtimeRoot ? path.join(activeConfig.runtimeRoot, 'runtime', 'project.json') : null);
   const current = runtimePath ? await readJsonIfExists(runtimePath, {}) : {};
   return {
     runtimePath,
@@ -333,7 +315,8 @@ export async function syncGlobalStitchSessionIndex({ projectRoot = null, globalS
   if (!resolvedProjectRoot) return null;
   const config = await loadDesignProjectConfig({ projectRoot: resolvedProjectRoot, startPath: statePath }).catch(() => null);
   const { runtime } = await loadProjectRuntime({ projectRoot: resolvedProjectRoot, config, startPath: statePath }).catch(() => ({ runtime: null }));
-  const indexPath = globalSessionIndexPath || config?.stitch?.globalSessionIndexPath || path.join(resolvedProjectRoot, '04-generated', 'stitch', 'stitch-sessions.json');
+  const pageRuntimeDir = statePath ? path.dirname(path.resolve(statePath)) : null;
+  const indexPath = globalSessionIndexPath || (pageRuntimeDir ? path.join(pageRuntimeDir, 'stitch-sessions.json') : config?.stitch?.globalSessionIndexPath || path.join(resolvedProjectRoot, '04-generated', 'stitch', 'runtime', 'stitch-sessions.json'));
   const current = await readJsonIfExists(indexPath, {
     version: 1,
     projectRoot: resolvedProjectRoot,
@@ -357,121 +340,6 @@ export async function syncGlobalStitchSessionIndex({ projectRoot = null, globalS
   return indexPath;
 }
 
-export async function loadStitchSdk() {
-  try {
-    return await import('@google/stitch-sdk');
-  } catch {
-    const candidates = [];
-    if (process.env.STITCH_SDK_NODE_MODULES) {
-      candidates.push(path.join(process.env.STITCH_SDK_NODE_MODULES, '@google/stitch-sdk/dist/src/index.js'));
-    }
-    candidates.push(path.join(workspaceRoot(), 'tmp/stitch-sdk-exp/node_modules/@google/stitch-sdk/dist/src/index.js'));
-    for (const candidate of candidates) {
-      try {
-        return await import(pathToFileURL(candidate).href);
-      } catch {
-        // try next
-      }
-    }
-    throw new Error('Unable to load @google/stitch-sdk. Install it or set STITCH_SDK_NODE_MODULES.');
-  }
-}
-
-export function availableApiKeys() {
-  return [process.env.STITCH_API_KEY, process.env.STITCH_API_KEY_1].filter(Boolean);
-}
-
-export async function createSdk(apiKey) {
-  const sdk = await loadStitchSdk();
-  if (!sdk.Stitch || !sdk.StitchToolClient) {
-    throw new Error('Loaded Stitch SDK is missing Stitch or StitchToolClient exports.');
-  }
-  const client = new sdk.StitchToolClient({ apiKey, timeout: 300_000 });
-  const instance = new sdk.Stitch(client);
-  return { sdk, client, stitch: instance };
-}
-
-export function isRateLimitLikeError(error) {
-  const message = (error?.message || String(error || '')).toLowerCase();
-  return [
-    '429',
-    'rate limit',
-    'rate-limit',
-    'too many requests',
-    'quota',
-    'resource_exhausted',
-    'exhausted',
-    'capacity',
-  ].some(token => message.includes(token));
-}
-
-export async function withKeyFallback(runFn) {
-  const keys = availableApiKeys();
-  if (!keys.length) {
-    throw new Error('No Stitch API key found in environment. Expected STITCH_API_KEY or STITCH_API_KEY_1.');
-  }
-  const errors = [];
-  for (let i = 0; i < keys.length; i += 1) {
-    const key = keys[i];
-    let ctx;
-    try {
-      ctx = await createSdk(key);
-      const result = await runFn(ctx.stitch, ctx.sdk);
-      await ctx.client.close().catch(() => {});
-      return result;
-    } catch (error) {
-      if (ctx?.client) await ctx.client.close().catch(() => {});
-      const message = error.message || String(error);
-      errors.push(message);
-      const hasAnotherKey = i < keys.length - 1;
-      if (!hasAnotherKey) break;
-      if (!isRateLimitLikeError(error)) {
-        throw error;
-      }
-    }
-  }
-  throw new Error(errors.join(' | '));
-}
-
-export function normalizeStitchModelId(modelId = null, fallback = 'GEMINI_3_PRO') {
-  const value = String(modelId || fallback).trim().toUpperCase();
-  if (value === 'GEMINI_3_1_PRO') return 'GEMINI_3_PRO';
-  if (value === 'GEMINI_3_PRO') return 'GEMINI_3_PRO';
-  if (value === 'GEMINI_3_FLASH') return 'GEMINI_3_FLASH';
-  return fallback;
-}
-
-export async function createOrOpenStitchProject(stitch, { title, projectId } = {}) {
-  const asProject = (candidate) => {
-    if (!candidate) return null;
-    if (typeof candidate === 'object' && typeof candidate.generate === 'function' && typeof candidate.getScreen === 'function') {
-      return candidate;
-    }
-    const resolvedProjectId = candidate?.projectId || candidate?.id || candidate;
-    if (resolvedProjectId && typeof stitch?.project === 'function') {
-      return stitch.project(resolvedProjectId);
-    }
-    return null;
-  };
-  if (projectId) return stitch.project(projectId);
-  if (typeof stitch?.createProject === 'function') {
-    const created = await stitch.createProject(title);
-    const wrapped = asProject(created);
-    if (wrapped) return wrapped;
-  }
-  if (typeof stitch?.callTool === 'function') {
-    const created = await stitch.callTool('create_project', { title });
-    const wrapped = asProject(created)
-      || asProject(created?.project)
-      || asProject(created?.projectId)
-      || asProject(created?.id)
-      || asProject(created?.project?.projectId)
-      || asProject(created?.project?.id);
-    if (wrapped) return wrapped;
-  }
-  throw new Error('Unable to create a Stitch project with the current SDK surface.');
-}
-
 export async function readPrompt(promptFile) {
   return await fs.readFile(promptFile, 'utf8');
 }
@@ -490,7 +358,6 @@ export async function assertPromptPacketReadyForStitch({
   promptStage = 'generic',
   preApprovalLockFile = null,
   copyLockFile = null,
-  outputLockFile = null,
 } = {}) {
   const promptText = String(prompt || '').trim();
   const stage = String(promptStage || mode || 'generic').trim().toLowerCase();
@@ -503,9 +370,9 @@ export async function assertPromptPacketReadyForStitch({
     errors.push('prompt is empty');
   }
 
-  const requiredSnippets = ['# stitch prompt', 'copy locks:'];
+  const requiredSnippets = [];
   if (stage.includes('generate')) {
-    requiredSnippets.push('goal:', 'responsive intent:', 'theme intent:', 'semantic focus:', 'page-specific guardrails:', 'use this exact visible copy:');
+    requiredSnippets.push('design the', 'non-negotiables:', 'responsive intent:', 'visual direction:', 'layout and semantic requirements:', 'exact visible copy and labels:');
   }
   if (stage.includes('repair')) {
     if (stage.includes('remap') || stage.includes('edit')) {
@@ -530,11 +397,12 @@ export async function assertPromptPacketReadyForStitch({
   if (!/route candidate:/i.test(promptText)) {
     errors.push('prompt missing explicit route candidate line');
   }
+  if (/^#\s*stitch prompt/im.test(promptText) || /copy locks:/i.test(promptText)) {
+    errors.push('prompt contains internal Stitch packet/debug scaffolding; send a clean design prompt instead');
+  }
 
   const preApproval = await loadPreApprovalLock({ outdir, stateFile, preApprovalLockFile });
   const copy = await loadCopyLock({ outdir, stateFile, copyLockFile });
-  const output = await loadOutputLock({ outdir, stateFile, outputLockFile });
-
   if (stage.includes('generate') && !preApproval.preApprovalLock) {
     errors.push(`missing pre-approval lock: ${preApproval.preApprovalLockPath}`);
   }
@@ -544,14 +412,17 @@ export async function assertPromptPacketReadyForStitch({
   if (stage.includes('remap') && !copy.copyLock) {
     errors.push(`missing copy lock: ${copy.copyLockPath}`);
   }
-  if ((stage.includes('edit') || stage.includes('repair')) && !copy.copyLock && !preApproval.preApprovalLock) {
+  if ((stage.includes('edit') || stage.includes('repair')) && !copy.copyLock) {
     errors.push(`missing copy lock: ${copy.copyLockPath}`);
   }
-  if (!output.outputLock) {
-    errors.push(`missing output lock: ${output.outputLockPath}`);
+  if ((stage.includes('remap') || stage.includes('repair')) && outdir) {
+    const responsivePlanPath = path.join(path.dirname(path.dirname(path.resolve(outdir))), '02-pages', path.basename(path.resolve(outdir)), 'responsive-plan.md');
+    const inferredRoot = await discoverDesignProjectRoot({ startPath: outdir }).catch(() => null);
+    const inferredPageKey = path.basename(path.resolve(outdir));
+    const planPath = inferredRoot ? path.join(inferredRoot, '02-pages', inferredPageKey, 'responsive-plan.md') : responsivePlanPath;
+    if (!await pathExists(planPath)) errors.push(`missing responsive plan for remap/repair: ${planPath}`);
   }
-
-  const lockSource = output.outputLock || copy.copyLock || preApproval.preApprovalLock || null;
+  const lockSource = copy.copyLock || preApproval.preApprovalLock || null;
   if (lockSource?.siteTitle && !new RegExp(lockSource.siteTitle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i').test(promptText)) {
     errors.push(`prompt missing locked site title: ${lockSource.siteTitle}`);
   }
@@ -569,32 +440,7 @@ export async function assertPromptPacketReadyForStitch({
     promptStage: stage,
     preApprovalLockPath: preApproval.preApprovalLockPath || null,
     copyLockPath: copy.copyLockPath || null,
-    outputLockPath: output.outputLockPath || null,
   };
-}
-
-export async function ensureDir(dir) {
-  await fs.mkdir(dir, { recursive: true });
-}
-
-export async function fetchToFile(url, outPath) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`Failed to download ${url}: ${res.status} ${res.statusText}`);
-  const ab = await res.arrayBuffer();
-  await fs.writeFile(outPath, Buffer.from(ab));
-  return res.headers.get('content-type') || '';
-}
-
-export function normalizeDeviceType(deviceType = 'DESKTOP') {
-  return String(deviceType || 'DESKTOP').trim().toUpperCase();
-}
-
-export function breakpointForDeviceType(deviceType = 'DESKTOP') {
-  const normalized = normalizeDeviceType(deviceType);
-  if (normalized === 'MOBILE') return 'mobile';
-  if (normalized === 'TABLET') return 'tablet';
-  if (normalized === 'DESKTOP') return 'desktop';
-  return 'agnostic';
 }
 
 function stripMarkdownFence(markdown) {
@@ -684,11 +530,20 @@ function findLikelyStitchRoot(targetPath) {
 }
 
 export function stitchRootForOutdir({ outdir, stateFile } = {}) {
-  return path.dirname(inferStatePath({ outdir, stateFile }));
+  if (outdir) {
+    const found = findLikelyStitchRoot(outdir);
+    if (found) return found;
+  }
+  if (stateFile) {
+    const resolved = path.resolve(stateFile);
+    const dir = path.dirname(resolved);
+    return path.basename(dir) === 'runtime' ? path.dirname(dir) : dir;
+  }
+  return path.dirname(path.dirname(inferStatePath({ outdir, stateFile })));
 }
 
 export function semanticRulesPathForOutdir({ outdir, stateFile } = {}) {
-  return path.join(stitchRootForOutdir({ outdir, stateFile }), 'semantic-rules.json');
+  return path.join(runtimeDirForOutdir(stitchRootForOutdir({ outdir, stateFile })), 'semantic-rules.json');
 }
 
 export function preApprovalLockPathForOutdir({ outdir, stateFile, preApprovalLockFile } = {}) {
@@ -701,45 +556,25 @@ export function copyLockPathForOutdir({ outdir, stateFile, copyLockFile } = {}) 
   return path.join(stitchRootForOutdir({ outdir, stateFile }), 'locks', 'copy-lock.md');
 }
 
-export function outputLockPathForOutdir({ outdir, stateFile, outputLockFile } = {}) {
-  if (outputLockFile) return path.resolve(outputLockFile);
-  return path.join(stitchRootForOutdir({ outdir, stateFile }), 'locks', 'output-lock.md');
-}
-
 export function inferStatePath({ outdir, stateFile } = {}) {
   if (stateFile) return path.resolve(stateFile);
   if (!outdir) throw new Error('inferStatePath requires outdir or stateFile.');
   const stitchRoot = findLikelyStitchRoot(outdir);
-  if (stitchRoot) return path.join(stitchRoot, 'state.json');
+  if (stitchRoot) return path.join(runtimeDirForOutdir(stitchRoot), 'state.json');
   const resolved = path.resolve(outdir);
   const base = path.basename(resolved).toLowerCase();
   const parent = path.dirname(resolved);
   const parentBase = path.basename(parent).toLowerCase();
   const breakpointDirs = new Set(['mobile', 'tablet', 'desktop', 'agnostic']);
-  if (breakpointDirs.has(base)) return path.join(parent, 'state.json');
-  if (base === 'variants' && breakpointDirs.has(parentBase)) return path.join(path.dirname(parent), 'state.json');
+  if (breakpointDirs.has(base)) return path.join(runtimeDirForOutdir(parent), 'state.json');
+  if (base === 'variants' && breakpointDirs.has(parentBase)) return path.join(runtimeDirForOutdir(path.dirname(parent)), 'state.json');
   if (/^variant-\d+$/.test(base) && parentBase === 'variants') {
     const breakpointDir = path.dirname(parent);
     if (breakpointDirs.has(path.basename(breakpointDir).toLowerCase())) {
-      return path.join(path.dirname(breakpointDir), 'state.json');
+      return path.join(runtimeDirForOutdir(path.dirname(breakpointDir)), 'state.json');
     }
   }
-  return path.join(resolved, 'state.json');
-}
-
-export async function readJsonIfExists(filePath, fallback = null) {
-  try {
-    const raw = await fs.readFile(filePath, 'utf8');
-    return JSON.parse(raw);
-  } catch (error) {
-    if (error?.code === 'ENOENT') return fallback;
-    throw error;
-  }
-}
-
-export async function writeJson(filePath, payload) {
-  await ensureDir(path.dirname(filePath));
-  await fs.writeFile(filePath, JSON.stringify(payload, null, 2));
+  return path.join(runtimeDirForOutdir(resolved), 'state.json');
 }
 
 export function compactProjectScreenRecord(screen, fallback = {}) {
@@ -803,11 +638,6 @@ export async function writeProjectScreenInventory({ inventoryPath, projectId, sc
   };
   await writeJson(inventoryPath, payload);
   return payload;
-}
-
-export async function patchJson(filePath, patch) {
-  const current = await readJsonIfExists(filePath, {});
-  await writeJson(filePath, { ...(current || {}), ...patch });
 }
 
 export async function loadStitchState({ outdir, stateFile } = {}) {
@@ -1059,20 +889,6 @@ export function buildPreApprovalLockMarkdown(guidance = {}) {
 export function buildCopyLockMarkdown(guidance = {}) {
   return buildLockMarkdown({
     title: 'Copy lock',
-    siteTitle: guidance.siteTitle ?? null,
-    pageTitle: guidance.pageTitle || guidance.pageName || null,
-    primaryNavLabels: guidance.navLabels || [],
-    searchPlaceholder: guidance.searchPlaceholder || null,
-    keySectionHeadings: guidance.coreHeadings || [],
-    keyCtaLinkLabels: guidance.ctaLabels || [],
-    requiredNouns: guidance.requiredNouns || [],
-    bannedDriftWords: guidance.banned || [],
-  });
-}
-
-export function buildOutputLockMarkdown(guidance = {}) {
-  return buildLockMarkdown({
-    title: 'Output lock',
     siteTitle: guidance.siteTitle ?? null,
     pageTitle: guidance.pageTitle || guidance.pageName || null,
     primaryNavLabels: guidance.navLabels || [],
@@ -1376,17 +1192,6 @@ export async function loadCopyLock({ outdir, stateFile, copyLockFile } = {}) {
   }
 }
 
-export async function loadOutputLock({ outdir, stateFile, outputLockFile } = {}) {
-  const outputLockPath = outputLockPathForOutdir({ outdir, stateFile, outputLockFile });
-  try {
-    const markdown = await fs.readFile(outputLockPath, 'utf8');
-    return { outputLockPath, outputLock: parseCopyLockMarkdown(markdown) };
-  } catch (error) {
-    if (error?.code === 'ENOENT') return { outputLockPath, outputLock: null };
-    throw error;
-  }
-}
-
 function getLockSeverityProfile(mode = 'default') {
   const profiles = {
     preapproval: {
@@ -1562,175 +1367,8 @@ export async function evaluateCopyLockForHtml({ htmlPath, outdir, stateFile, cop
   return evaluateParsedLockAgainstHtml(copyLock, 'copyLockPath', copyLockPath, html, { mode: 'copy', deviceType });
 }
 
-export async function evaluateOutputLockForHtml({ htmlPath, outdir, stateFile, outputLockFile, deviceType = 'DESKTOP' } = {}) {
-  const { outputLockPath, outputLock } = await loadOutputLock({ outdir, stateFile, outputLockFile });
-  if (!outputLock) return null;
-  const html = await fs.readFile(htmlPath, 'utf8');
-  return evaluateParsedLockAgainstHtml(outputLock, 'outputLockPath', outputLockPath, html, { mode: 'output', deviceType });
-}
-
-export function defaultViewportForDeviceType(deviceType = 'DESKTOP') {
-  const normalized = String(deviceType || 'DESKTOP').toUpperCase();
-  if (normalized === 'MOBILE') {
-    return { width: 390, height: 844, deviceScaleFactor: 2, delayMs: 1500 };
-  }
-  if (normalized === 'TABLET') {
-    return { width: 1024, height: 1366, deviceScaleFactor: 2, delayMs: 1500 };
-  }
-  return { width: 1440, height: 900, deviceScaleFactor: 2, delayMs: 1500 };
-}
-
-export function viewportOptionsFromArgs(args = {}, deviceType = 'DESKTOP') {
-  const defaults = defaultViewportForDeviceType(deviceType);
-  return {
-    width: args['viewport-width'] ? Number(args['viewport-width']) : defaults.width,
-    height: args['viewport-height'] ? Number(args['viewport-height']) : defaults.height,
-    deviceScaleFactor: args['device-scale-factor'] ? Number(args['device-scale-factor']) : defaults.deviceScaleFactor,
-    delayMs: args['render-delay-ms'] ? Number(args['render-delay-ms']) : defaults.delayMs,
-  };
-}
-
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-async function getFreePort() {
-  return await new Promise((resolve, reject) => {
-    const server = net.createServer();
-    server.on('error', reject);
-    server.listen(0, '127.0.0.1', () => {
-      const address = server.address();
-      const port = typeof address === 'object' && address ? address.port : null;
-      server.close((error) => {
-        if (error) reject(error);
-        else resolve(port);
-      });
-    });
-  });
-}
-
-function contentTypeForFile(filePath) {
-  const ext = path.extname(filePath).toLowerCase();
-  return {
-    '.html': 'text/html; charset=utf-8',
-    '.css': 'text/css; charset=utf-8',
-    '.js': 'application/javascript; charset=utf-8',
-    '.json': 'application/json; charset=utf-8',
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.webp': 'image/webp',
-    '.svg': 'image/svg+xml',
-    '.woff': 'font/woff',
-    '.woff2': 'font/woff2',
-    '.ttf': 'font/ttf',
-  }[ext] || 'application/octet-stream';
-}
-
-async function startStaticServer(rootDir, defaultFile) {
-  const resolvedRoot = path.resolve(rootDir);
-  const realRoot = await fs.realpath(resolvedRoot);
-  const server = createHttpServer(async (req, res) => {
-    try {
-      const url = new URL(req.url || '/', 'http://127.0.0.1');
-      let requestPath = decodeURIComponent(url.pathname || '/');
-      if (requestPath === '/') requestPath = `/${defaultFile}`;
-      const candidate = path.resolve(resolvedRoot, `.${requestPath}`);
-      if (candidate !== resolvedRoot && !candidate.startsWith(`${resolvedRoot}${path.sep}`)) {
-        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('Forbidden');
-        return;
-      }
-      const stat = await fs.lstat(candidate);
-      if (stat.isSymbolicLink()) {
-        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('Symlinks forbidden');
-        return;
-      }
-      const realCandidate = await fs.realpath(candidate);
-      if (realCandidate !== realRoot && !realCandidate.startsWith(`${realRoot}${path.sep}`)) {
-        res.writeHead(403, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('Forbidden');
-        return;
-      }
-      const content = await fs.readFile(realCandidate);
-      res.writeHead(200, { 'Content-Type': contentTypeForFile(candidate) });
-      res.end(content);
-    } catch (error) {
-      if (error?.code === 'ENOENT') {
-        res.writeHead(404, { 'Content-Type': 'text/plain; charset=utf-8' });
-        res.end('Not found');
-        return;
-      }
-      res.writeHead(500, { 'Content-Type': 'text/plain; charset=utf-8' });
-      res.end(error.message || String(error));
-    }
-  });
-
-  await new Promise((resolve, reject) => {
-    server.on('error', reject);
-    server.listen(0, '127.0.0.1', resolve);
-  });
-  const address = server.address();
-  const port = typeof address === 'object' && address ? address.port : null;
-  return {
-    server,
-    baseUrl: `http://127.0.0.1:${port}`,
-    close: async () => {
-      await new Promise((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
-    },
-  };
-}
-
-async function commandWorks(command, args = ['--version']) {
-  return await new Promise((resolve) => {
-    const child = spawn(command, args, { stdio: 'ignore' });
-    const timer = setTimeout(() => {
-      child.kill('SIGKILL');
-      resolve(false);
-    }, 5000);
-    child.on('error', () => {
-      clearTimeout(timer);
-      resolve(false);
-    });
-    child.on('exit', (code) => {
-      clearTimeout(timer);
-      resolve(code === 0);
-    });
-  });
-}
-
-async function findChromiumBinary() {
-  const candidates = [
-    process.env.CHROMIUM_BIN,
-    '/snap/bin/chromium',
-    'chromium',
-    'chromium-browser',
-    '/usr/bin/chromium-browser',
-    'google-chrome',
-    'google-chrome-stable',
-  ].filter(Boolean);
-
-  for (const candidate of candidates) {
-    if (await commandWorks(candidate)) return candidate;
-  }
-  throw new Error('Unable to find a Chromium binary for rendered preview capture. Set CHROMIUM_BIN if needed.');
-}
-
-async function waitForJsonVersion(debugPort, timeoutMs = 15000) {
-  const started = Date.now();
-  let lastError;
-  while (Date.now() - started < timeoutMs) {
-    try {
-      const res = await fetch(`http://127.0.0.1:${debugPort}/json/version`);
-      if (res.ok) return await res.json();
-      lastError = new Error(`Debugger endpoint returned ${res.status}`);
-    } catch (error) {
-      lastError = error;
-    }
-    await sleep(200);
-  }
-  throw lastError || new Error('Timed out waiting for Chromium remote debugging endpoint.');
 }
 
 export function shouldAttemptScreenRecovery(error) {
@@ -1949,13 +1587,16 @@ export async function exportPrimaryDesignSystem({ stitch, projectId, outdir, sta
   const activeConfig = config || await loadDesignProjectConfig({ projectRoot, startPath: statePath }).catch(() => null);
   const generatedRoot = activeConfig?.projectRoot ? normalizeOptionalPath(activeConfig.projectRoot, activeConfig.stitch?.generatedRoot || '04-generated/stitch') : path.dirname(statePath);
   const exportedRoot = path.join(generatedRoot, 'design-system-exported');
+  const stateDir = path.dirname(statePath);
+  const pageRootForRuntime = path.basename(stateDir) === 'runtime' ? path.dirname(stateDir) : stateDir;
+  const runtimeRoot = runtimeDirForOutdir(pageRootForRuntime);
   const project = stitch.project(projectId);
   const systems = await project.listDesignSystems().catch(() => []);
   const primary = systems[0];
   if (!primary) {
     return { designSystem: null, designSystemJsonPath: null, designSystemMdPath: null, designStyleMdPath: null, statePath };
   }
-  const designSystemJsonPath = path.join(exportedRoot, 'design-system.json');
+  const designSystemJsonPath = path.join(runtimeRoot, 'design-system.json');
   const designSystemMdPath = path.join(exportedRoot, 'DESIGN.md');
   const designStyleMdPath = path.join(exportedRoot, 'design-style.md');
   await writeJson(designSystemJsonPath, primary.data || {});
@@ -2005,7 +1646,7 @@ export async function persistProjectContext({ stitch, projectId, outdir, stateFi
   if (state.projectId) runtime.projectId = state.projectId;
   if (runtimePath) await saveProjectRuntime(runtimePath, runtime);
 
-  const inventoryPath = config?.runtimeRoot ? path.join(config.runtimeRoot, 'stitch-project-screens.json') : null;
+  const inventoryPath = outdir ? path.join(runtimeDirForOutdir(outdir), 'stitch-project-screens.json') : null;
   if (stitch && state.projectId && screenId && inventoryPath) {
     try {
       const inventoryScreen = await stitch.project(state.projectId).getScreen(screenId);
@@ -2036,7 +1677,7 @@ export async function persistProjectContext({ stitch, projectId, outdir, stateFi
   await saveStitchState(statePath, state);
   const sessionIndexPath = await syncGlobalStitchSessionIndex({
     projectRoot: activeProjectRoot,
-    globalSessionIndexPath: config?.stitch?.globalSessionIndexPath || null,
+    globalSessionIndexPath: null,
     statePath,
     state,
     primaryBreakpoint: activePrimaryBreakpoint,
@@ -2050,405 +1691,6 @@ export async function persistProjectContext({ stitch, projectId, outdir, stateFi
   };
 }
 
-class CdpConnection {
-  constructor(wsUrl) {
-    this.wsUrl = wsUrl;
-    this.ws = null;
-    this.nextId = 1;
-    this.pending = new Map();
-    this.eventWaiters = [];
-    this.eventListeners = [];
-  }
-
-  static async connect(wsUrl) {
-    const connection = new CdpConnection(wsUrl);
-    await connection.open();
-    return connection;
-  }
-
-  async open() {
-    await new Promise((resolve, reject) => {
-      const ws = new WebSocket(this.wsUrl);
-      this.ws = ws;
-      ws.addEventListener('open', () => resolve());
-      ws.addEventListener('error', (event) => reject(event.error || new Error('WebSocket open failed')));
-      ws.addEventListener('message', (event) => this.onMessage(event));
-      ws.addEventListener('close', () => {
-        for (const { reject } of this.pending.values()) {
-          reject(new Error('CDP WebSocket closed'));
-        }
-        this.pending.clear();
-      });
-    });
-  }
-
-  onMessage(event) {
-    const message = JSON.parse(event.data);
-    if (message.id) {
-      const pending = this.pending.get(message.id);
-      if (!pending) return;
-      this.pending.delete(message.id);
-      if (message.error) pending.reject(new Error(message.error.message || JSON.stringify(message.error)));
-      else pending.resolve(message.result || {});
-      return;
-    }
-    for (const listener of this.eventListeners) {
-      if (listener.method !== message.method) continue;
-      if (listener.sessionId && listener.sessionId !== message.sessionId) continue;
-      listener.handler(message);
-    }
-    for (let i = 0; i < this.eventWaiters.length; i += 1) {
-      const waiter = this.eventWaiters[i];
-      if (waiter.method !== message.method) continue;
-      if (waiter.sessionId && waiter.sessionId !== message.sessionId) continue;
-      this.eventWaiters.splice(i, 1);
-      waiter.resolve(message);
-      return;
-    }
-  }
-
-  onEvent(method, sessionId, handler) {
-    const listener = { method, sessionId, handler };
-    this.eventListeners.push(listener);
-    return () => {
-      const index = this.eventListeners.indexOf(listener);
-      if (index >= 0) this.eventListeners.splice(index, 1);
-    };
-  }
-
-  async send(method, params = {}, sessionId) {
-    const id = this.nextId += 1;
-    const payload = { id, method, params };
-    if (sessionId) payload.sessionId = sessionId;
-    const promise = new Promise((resolve, reject) => {
-      this.pending.set(id, { resolve, reject });
-    });
-    this.ws.send(JSON.stringify(payload));
-    return await promise;
-  }
-
-  async waitForEvent(method, sessionId, timeoutMs = 30000) {
-    return await new Promise((resolve, reject) => {
-      const timer = setTimeout(() => {
-        const index = this.eventWaiters.findIndex((waiter) => waiter.resolve === resolve);
-        if (index >= 0) this.eventWaiters.splice(index, 1);
-        reject(new Error(`Timed out waiting for event ${method}`));
-      }, timeoutMs);
-      this.eventWaiters.push({
-        method,
-        sessionId,
-        resolve: (message) => {
-          clearTimeout(timer);
-          resolve(message);
-        },
-        reject,
-      });
-    });
-  }
-
-  async close() {
-    if (!this.ws) return;
-    this.ws.close();
-    this.ws = null;
-  }
-}
-
-function pngDimensionsFromBuffer(buffer) {
-  const signature = buffer.subarray(0, 8).toString('hex');
-  if (signature !== '89504e470d0a1a0a') {
-    throw new Error('Rendered preview is not a PNG.');
-  }
-  return {
-    width: buffer.readUInt32BE(16),
-    height: buffer.readUInt32BE(20),
-  };
-}
-
-export async function renderHtmlPreview({ htmlPath, outPath, fullOutPath, viewport }) {
-  const resolvedHtmlPath = path.resolve(htmlPath);
-  const rootDir = path.dirname(resolvedHtmlPath);
-  const defaultFile = path.basename(resolvedHtmlPath);
-  const staticServer = await startStaticServer(rootDir, defaultFile);
-  await ensureDir(path.dirname(outPath));
-  if (fullOutPath) await ensureDir(path.dirname(fullOutPath));
-  const homedirTmp = path.join(os.homedir(), 'tmp');
-  await ensureDir(homedirTmp);
-  const userDataDir = await fs.mkdtemp(path.join(homedirTmp, 'openclaw-stitch-render-'));
-  const chromium = await findChromiumBinary();
-  const debugPort = await getFreePort();
-  const browser = spawn(chromium, [
-    '--headless=new',
-    '--disable-gpu',
-    '--hide-scrollbars',
-    '--no-first-run',
-    '--no-default-browser-check',
-    '--disable-dev-shm-usage',
-    '--disable-background-networking',
-    '--disable-sync',
-    '--disable-default-apps',
-    '--host-resolver-rules=MAP * 0.0.0.0, EXCLUDE 127.0.0.1, EXCLUDE localhost',
-    '--remote-debugging-address=127.0.0.1',
-    `--remote-debugging-port=${debugPort}`,
-    `--user-data-dir=${userDataDir}`,
-    'about:blank',
-  ], {
-    stdio: 'ignore',
-  });
-
-  let cdp;
-  let targetId;
-  try {
-    const version = await waitForJsonVersion(debugPort, 20000);
-    cdp = await CdpConnection.connect(version.webSocketDebuggerUrl);
-    const created = await cdp.send('Target.createTarget', { url: 'about:blank', newWindow: false });
-    targetId = created.targetId;
-    const attached = await cdp.send('Target.attachToTarget', { targetId, flatten: true });
-    const sessionId = attached.sessionId;
-
-    await cdp.send('Page.enable', {}, sessionId);
-    await cdp.send('Runtime.enable', {}, sessionId);
-    await cdp.send('Fetch.enable', { patterns: [{ urlPattern: '*', requestStage: 'Request' }] }, sessionId);
-    const allowedOrigin = staticServer.baseUrl;
-    const removeFetchListener = cdp.onEvent('Fetch.requestPaused', sessionId, (message) => {
-      const params = message.params || {};
-      const requestId = params.requestId;
-      const url = params.request?.url || '';
-      const allowed = url.startsWith(allowedOrigin) || url.startsWith('data:') || url.startsWith('blob:') || url === 'about:blank';
-      cdp.send(allowed ? 'Fetch.continueRequest' : 'Fetch.failRequest', allowed ? { requestId } : { requestId, errorReason: 'BlockedByClient' }, sessionId).catch(() => {});
-    });
-    await cdp.send('Emulation.setDeviceMetricsOverride', {
-      width: viewport.width,
-      height: viewport.height,
-      deviceScaleFactor: viewport.deviceScaleFactor,
-      mobile: false,
-      screenWidth: viewport.width,
-      screenHeight: viewport.height,
-      positionX: 0,
-      positionY: 0,
-      dontSetVisibleSize: false,
-    }, sessionId);
-
-    const targetUrl = `${staticServer.baseUrl}/${encodeURIComponent(defaultFile)}`;
-    await cdp.send('Page.navigate', { url: targetUrl }, sessionId);
-    await cdp.waitForEvent('Page.loadEventFired', sessionId, 30000);
-    await cdp.send('Runtime.evaluate', {
-      expression: `(async () => {
-        try {
-          if (document.fonts?.ready) await document.fonts.ready;
-        } catch {}
-        await new Promise((resolve) => setTimeout(resolve, ${viewport.delayMs}));
-        return true;
-      })()`,
-      awaitPromise: true,
-      returnByValue: true,
-    }, sessionId);
-
-    const layout = await cdp.send('Page.getLayoutMetrics', {}, sessionId);
-    const evaluated = await cdp.send('Runtime.evaluate', {
-      expression: `(() => {
-        const de = document.documentElement;
-        const body = document.body;
-        const attrs = ['aria-label', 'placeholder', 'alt', 'value', 'title'];
-        const meaningfulTags = new Set(['IMG', 'SVG', 'CANVAS', 'VIDEO', 'PICTURE', 'INPUT', 'TEXTAREA', 'BUTTON', 'SELECT', 'A']);
-        const meaningfulElements = Array.from(body?.querySelectorAll('*') || []).filter((el) => {
-          const tag = (el.tagName || '').toUpperCase();
-          if (!tag || ['SCRIPT', 'STYLE', 'LINK', 'META', 'NOSCRIPT', 'HEAD'].includes(tag)) return false;
-          const style = window.getComputedStyle(el);
-          if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || 1) === 0) return false;
-          const rect = el.getBoundingClientRect();
-          if (rect.width < 2 || rect.height < 2) return false;
-          const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-          const directText = Array.from(el.childNodes || []).some((node) => node.nodeType === Node.TEXT_NODE && (node.textContent || '').replace(/\s+/g, ' ').trim().length > 0);
-          const hasText = directText || (el.children.length === 0 && text.length > 0);
-          const hasAttrText = attrs.some((attr) => {
-            const value = el.getAttribute?.(attr);
-            return !!(value && value.trim());
-          });
-          const hasBackgroundImage = style.backgroundImage && style.backgroundImage !== 'none';
-          return hasText || hasAttrText || meaningfulTags.has(tag) || hasBackgroundImage;
-        });
-
-        let contentBottom = 0;
-        let contentRight = 0;
-        for (const el of meaningfulElements) {
-          const rect = el.getBoundingClientRect();
-          contentBottom = Math.max(contentBottom, rect.bottom + window.scrollY);
-          contentRight = Math.max(contentRight, rect.right + window.scrollX);
-        }
-
-        const fixedBottomCandidates = Array.from(body?.querySelectorAll('*') || []).filter((el) => {
-          const tag = (el.tagName || '').toUpperCase();
-          if (!tag || ['SCRIPT', 'STYLE', 'LINK', 'META', 'NOSCRIPT', 'HEAD'].includes(tag)) return false;
-          const style = window.getComputedStyle(el);
-          if (!['fixed', 'sticky'].includes(String(style.position || '').toLowerCase())) return false;
-          if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity || 1) === 0) return false;
-          const rect = el.getBoundingClientRect();
-          if (rect.width < window.innerWidth * 0.55 || rect.height < 36) return false;
-          if (rect.top < window.innerHeight * 0.55) return false;
-          if (rect.bottom < window.innerHeight - 4) return false;
-          return true;
-        });
-
-        let fixedBottomBar = null;
-        if (fixedBottomCandidates.length) {
-          const bar = fixedBottomCandidates
-            .map((el) => ({ el, rect: el.getBoundingClientRect() }))
-            .sort((a, b) => (b.rect.height * b.rect.width) - (a.rect.height * a.rect.width))[0];
-
-          const overlapping = meaningfulElements
-            .filter((el) => el !== bar.el && !bar.el.contains(el) && !el.contains(bar.el))
-            .map((el) => {
-              const rect = el.getBoundingClientRect();
-              const text = (el.innerText || el.textContent || '').replace(/\s+/g, ' ').trim();
-              const directText = Array.from(el.childNodes || []).some((node) => node.nodeType === Node.TEXT_NODE && (node.textContent || '').replace(/\s+/g, ' ').trim().length > 0);
-              return { el, rect, text, directText };
-            })
-            .filter(({ el, rect, text, directText }) => {
-              const tag = (el.tagName || '').toUpperCase();
-              const style = window.getComputedStyle(el);
-              if (style.position === 'fixed' || style.position === 'sticky') return false;
-              if (rect.width < 12 || rect.height < 12) return false;
-              if (rect.bottom <= 0 || rect.top >= window.innerHeight) return false;
-              if (rect.bottom <= bar.rect.top + 2) return false;
-              if (rect.top >= bar.rect.bottom - 2) return false;
-              const hasUsefulContent = directText || meaningfulTags.has(tag) || (text && text.length > 0) || (style.backgroundImage && style.backgroundImage !== 'none');
-              return hasUsefulContent;
-            });
-
-          fixedBottomBar = {
-            top: Math.round(bar.rect.top),
-            bottom: Math.round(bar.rect.bottom),
-            height: Math.round(bar.rect.height),
-            width: Math.round(bar.rect.width),
-            overlapCount: overlapping.length,
-            overlapSamples: overlapping.slice(0, 6).map(({ el, text, rect }) => ({
-              tag: (el.tagName || '').toUpperCase(),
-              text: String(text || '').slice(0, 80),
-              top: Math.round(rect.top),
-              bottom: Math.round(rect.bottom),
-            })),
-          };
-        }
-
-        return {
-          viewport: {
-            width: window.innerWidth,
-            height: window.innerHeight,
-            dpr: window.devicePixelRatio,
-          },
-          fullWidth: Math.max(de.scrollWidth, body?.scrollWidth || 0, de.clientWidth, body?.clientWidth || 0),
-          fullHeight: Math.max(de.scrollHeight, body?.scrollHeight || 0, de.clientHeight, body?.clientHeight || 0),
-          meaningfulWidth: Math.max(contentRight, 0),
-          meaningfulHeight: Math.max(contentBottom, 0),
-          meaningfulElementCount: meaningfulElements.length,
-          fixedBottomBar,
-        };
-      })()`,
-      returnByValue: true,
-    }, sessionId);
-
-    const measured = evaluated.result?.value || {};
-    const layoutWidth = Math.ceil(layout.contentSize?.width || 0);
-    const layoutHeight = Math.ceil(layout.contentSize?.height || 0);
-    const domFullWidth = Math.ceil(measured.fullWidth || 0);
-    const domFullHeight = Math.ceil(measured.fullHeight || 0);
-    const meaningfulWidth = Math.ceil(measured.meaningfulWidth || 0);
-    const meaningfulHeight = Math.ceil(measured.meaningfulHeight || 0);
-
-    const fullWidth = Math.ceil(Math.max(layoutWidth, domFullWidth, meaningfulWidth, viewport.width));
-    const rawFullHeight = Math.ceil(Math.max(layoutHeight, domFullHeight, viewport.height));
-    const croppedHeight = meaningfulHeight ? Math.min(Math.max(meaningfulHeight + 32, 240), rawFullHeight) : rawFullHeight;
-    const fullHeight = Math.max(1, croppedHeight);
-    const viewportShot = await cdp.send('Page.captureScreenshot', {
-      format: 'png',
-      fromSurface: true,
-      captureBeyondViewport: false,
-      clip: {
-        x: 0,
-        y: 0,
-        width: viewport.width,
-        height: viewport.height,
-        scale: 1,
-      },
-    }, sessionId);
-
-    const viewportBuffer = Buffer.from(viewportShot.data, 'base64');
-    await fs.writeFile(outPath, viewportBuffer);
-    const viewportImageSize = pngDimensionsFromBuffer(viewportBuffer);
-
-    const screenshot = await cdp.send('Page.captureScreenshot', {
-      format: 'png',
-      fromSurface: true,
-      captureBeyondViewport: true,
-      clip: {
-        x: 0,
-        y: 0,
-        width: fullWidth,
-        height: fullHeight,
-        scale: 1,
-      },
-    }, sessionId);
-
-    const buffer = Buffer.from(screenshot.data, 'base64');
-    const fullPagePath = fullOutPath || outPath;
-    await fs.writeFile(fullPagePath, buffer);
-    const fullPageImageSize = pngDimensionsFromBuffer(buffer);
-
-    await cdp.send('Target.closeTarget', { targetId });
-    return {
-      previewPath: outPath,
-      fullPagePath,
-      viewport: {
-        width: viewport.width,
-        height: viewport.height,
-        deviceScaleFactor: viewport.deviceScaleFactor,
-        delayMs: viewport.delayMs,
-      },
-      renderedCssSize: {
-        width: viewport.width,
-        height: viewport.height,
-      },
-      fullPageRenderedCssSize: {
-        width: fullWidth,
-        height: fullHeight,
-      },
-      viewportCapture: {
-        previewPath: outPath,
-        renderedCssSize: {
-          width: viewport.width,
-          height: viewport.height,
-        },
-        imageSize: viewportImageSize,
-      },
-      fullPageCapture: {
-        previewPath: fullPagePath,
-        renderedCssSize: {
-          width: fullWidth,
-          height: fullHeight,
-        },
-        imageSize: fullPageImageSize,
-      },
-      contentMetrics: {
-        layoutWidth,
-        domFullWidth,
-        meaningfulWidth,
-        layoutHeight,
-        domFullHeight,
-        meaningfulHeight,
-        meaningfulElementCount: Number(measured.meaningfulElementCount || 0),
-        fixedBottomBar: measured.fixedBottomBar || null,
-      },
-      imageSize: viewportImageSize,
-      fullPageImageSize,
-    };
-  } finally {
-    if (cdp) await cdp.close().catch(() => {});
-    if (browser.pid && !browser.killed) browser.kill('SIGTERM');
-    await staticServer.close().catch(() => {});
-    await fs.rm(userDataDir, { recursive: true, force: true }).catch(() => {});
-  }
-}
-
 export function artifactStemForOutdir(outdir, meta = {}, options = {}) {
   const breakpoint = normalizeBreakpointName(meta.breakpoint || breakpointForDeviceType(meta.deviceType || 'DESKTOP'), 'agnostic');
   const theme = slugifyPageToken(options.theme || meta.theme || meta.themeName || '');
@@ -2456,11 +1698,66 @@ export function artifactStemForOutdir(outdir, meta = {}, options = {}) {
   return `${themePart}${breakpoint}`;
 }
 
+export function runtimeDirForOutdir(outdir) {
+  return path.join(path.resolve(outdir), 'runtime');
+}
+
+export function metaPathForOutdir(outdir, stem) {
+  return path.join(runtimeDirForOutdir(outdir), `${stem}.meta.json`);
+}
+
+export function candidateOutdirForOperation(outdir, meta = {}, options = {}) {
+  if (options.acceptedRoot === true || options.candidate === false) return path.resolve(outdir);
+  const stem = artifactStemForOutdir(outdir, meta, options);
+  const op = slugifyPageToken(options.attemptOperation || meta.mode || 'candidate') || 'candidate';
+  const stamp = `${new Date().toISOString().replace(/[:.]/g, '-')}-${process.hrtime.bigint().toString()}`;
+  const label = slugifyPageToken(options.attemptLabel || `${op}-${stem}-${stamp}`);
+  return path.join(path.resolve(outdir), 'attempts', label);
+}
+
+
+async function pngDimensionsFromFile(filePath) {
+  try {
+    const handle = await fs.open(filePath, 'r');
+    try {
+      const buffer = Buffer.alloc(24);
+      await handle.read(buffer, 0, 24, 0);
+      if (buffer.readUInt32BE(0) !== 0x89504e47 || buffer.toString('ascii', 1, 4) !== 'PNG') return null;
+      return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+    } finally {
+      await handle.close();
+    }
+  } catch {
+    return null;
+  }
+}
+
+function assessStitchScreenshotDimensions(dimensions, viewport = {}) {
+  const findings = [];
+  const width = Number(dimensions?.width || 0);
+  const height = Number(dimensions?.height || 0);
+  const expectedWidth = Number(viewport?.width || 0);
+  const expectedHeight = Number(viewport?.height || 0);
+  if (!width || !height) findings.push('missing-image-dimensions');
+  if (width > 0 && width < 240) findings.push('too-narrow');
+  if (height > 0 && height < 300) findings.push('too-short');
+  if (expectedWidth && width > 0 && width < expectedWidth * 0.25) findings.push('far-smaller-than-viewport-width');
+  if (expectedHeight && height > 0 && height < Math.min(420, expectedHeight * 0.35)) findings.push('far-smaller-than-viewport-height');
+  return { passed: findings.length === 0, findings, width, height, expectedWidth, expectedHeight };
+}
+
+function hardRequiredNounMisses(check) {
+  return (check?.hardMissing || []).filter((item) => item?.kind === 'requiredNoun' || /requirednoun/i.test(String(item?.kind || '')));
+}
+
 export async function reviewLocalHtmlArtifacts({ htmlPath, outdir, meta = {}, viewport = defaultViewportForDeviceType(meta.deviceType), options = {} }) {
   await ensureDir(outdir);
+  const resolvedOutdir = path.resolve(outdir);
+  const localRenderDir = options.localRenderDir ? path.resolve(options.localRenderDir) : resolvedOutdir;
+  await ensureDir(localRenderDir);
   const resolvedHtmlPath = path.resolve(htmlPath);
   const stem = artifactStemForOutdir(outdir, meta, options);
-  const finalHtmlPath = path.join(path.resolve(outdir), `${stem}.html`);
+  const finalHtmlPath = path.join(resolvedOutdir, `${stem}.html`);
   if (resolvedHtmlPath !== finalHtmlPath) {
     await fs.copyFile(resolvedHtmlPath, finalHtmlPath);
   }
@@ -2475,15 +1772,17 @@ export async function reviewLocalHtmlArtifacts({ htmlPath, outdir, meta = {}, vi
       };
     }
   };
-  const imagePath = path.join(outdir, `${stem}.png`);
-  const fullImagePath = path.join(outdir, `${stem}.full.png`);
-  const renderMeta = await renderHtmlPreview({ htmlPath: finalHtmlPath, outPath: imagePath, fullOutPath: fullImagePath, viewport });
+  const localRenderSuffix = options.localRenderSuffix ? `.${slugifyPageToken(options.localRenderSuffix)}` : '';
+  const imagePath = path.join(localRenderDir, `${stem}${localRenderSuffix}.png`);
+  const fullImagePath = path.join(localRenderDir, `${stem}${localRenderSuffix}.full.png`);
+  const renderNetworkAccess = options.localRenderNetworkAccess || options.networkAccess || 'full';
+  const renderMeta = await renderHtmlPreview({ htmlPath: finalHtmlPath, outPath: imagePath, fullOutPath: fullImagePath, viewport, networkAccess: renderNetworkAccess });
   const deviceType = meta.deviceType || 'DESKTOP';
   const semanticCheck = await safeEvaluate('semantic-check', () => evaluateSemanticRulesForHtml({ htmlPath: finalHtmlPath, outdir, stateFile: options.stateFile || null, deviceType }));
   const preApprovalLockCheck = await safeEvaluate('pre-approval-lock-check', () => evaluatePreApprovalLockForHtml({ htmlPath: finalHtmlPath, outdir, stateFile: options.stateFile || null, preApprovalLockFile: options.preApprovalLockFile || null, deviceType }));
   const copyLockCheck = await safeEvaluate('copy-lock-check', () => evaluateCopyLockForHtml({ htmlPath: finalHtmlPath, outdir, stateFile: options.stateFile || null, copyLockFile: options.copyLockFile || null, deviceType }));
-  const outputLockCheck = await safeEvaluate('output-lock-check', () => evaluateOutputLockForHtml({ htmlPath: finalHtmlPath, outdir, stateFile: options.stateFile || null, outputLockFile: options.outputLockFile || null, deviceType }));
-  const metaPath = path.join(outdir, `${stem}.meta.json`);
+  const metaPath = metaPathForOutdir(resolvedOutdir, stem);
+  await ensureDir(path.dirname(metaPath));
   const existingMeta = await readJsonIfExists(metaPath, {});
   const localPatchApplied = Boolean(options.localPatchApplied || existingMeta.localPatchApplied);
   const derivedFromScreenId = localPatchApplied
@@ -2495,242 +1794,22 @@ export async function reviewLocalHtmlArtifacts({ htmlPath, outdir, meta = {}, vi
     localPatchApplied,
     localPatchStrategy: options.localPatchStrategy || existingMeta.localPatchStrategy || null,
     derivedFromScreenId,
-    renderedPreview: renderMeta,
+    renderedPreview: {
+      ...renderMeta,
+      networkAccess: renderNetworkAccess,
+    },
     semanticCheck,
     preApprovalLockCheck,
     copyLockCheck,
-    outputLockCheck,
     reviewedAt: new Date().toISOString(),
   };
-  await fs.writeFile(metaPath, JSON.stringify(payload, null, 2));
+  await writeJson(metaPath, payload);
   return { htmlPath: finalHtmlPath, imagePath, fullImagePath, metaPath };
 }
 
-export function buildLayoutDiagnostics({ html = '', deviceType = 'DESKTOP', viewport = defaultViewportForDeviceType(deviceType), renderMeta = {}, semanticCheck = null, preApprovalLockCheck = null, copyLockCheck = null, outputLockCheck = null, responsiveMapText = '' } = {}) {
-  const normalizedDeviceType = normalizeDeviceType(deviceType);
-  const contentMetrics = renderMeta.contentMetrics || {};
-  const viewportWidth = Number(renderMeta.renderedCssSize?.width || viewport.width || 0);
-  const fullWidth = Number(renderMeta.fullPageRenderedCssSize?.width || 0);
-  const meaningfulWidth = Number(contentMetrics.meaningfulWidth || 0);
-  const domFullWidth = Number(contentMetrics.domFullWidth || 0);
-  const widthRatio = viewportWidth > 0 && meaningfulWidth > 0 ? Number((meaningfulWidth / viewportWidth).toFixed(3)) : null;
-  const fixedBottomBar = contentMetrics.fixedBottomBar || null;
-  const lowerHtml = String(html || '').toLowerCase();
-  const responsiveMapRaw = String(responsiveMapText || '');
-  const lowerResponsiveMap = responsiveMapRaw.toLowerCase();
-  const findings = [];
-  const recommendedStrategies = [];
-  const blockers = [];
-
-  const addStrategy = (value) => {
-    if (value && !recommendedStrategies.includes(value)) recommendedStrategies.push(value);
-  };
-  const addFinding = (severity, code, detail) => findings.push({ severity, code, detail });
-
-  const semanticPassed = semanticCheck ? semanticCheck.passed === true : true;
-  const preApprovalPassed = preApprovalLockCheck ? preApprovalLockCheck.passed === true : false;
-  const copyPassed = copyLockCheck ? copyLockCheck.passed === true : false;
-  const outputPassed = outputLockCheck ? outputLockCheck.passed === true : false;
-
-  if (!semanticPassed) blockers.push('semantic-check-failed');
-  if (!preApprovalLockCheck) blockers.push('pre-approval-lock-missing');
-  else if (!preApprovalPassed) blockers.push('pre-approval-lock-failed');
-  if (!copyLockCheck) blockers.push('copy-lock-missing');
-  else if (!copyPassed) blockers.push('copy-lock-failed');
-  if (!outputLockCheck) blockers.push('output-lock-missing');
-  else if (!outputPassed) blockers.push('output-lock-failed');
-  if (!responsiveMapRaw.trim()) blockers.push('responsive-plan-missing');
-  else if (/\bTODO\b|Draft required before generation|Target shell must exist before layout repair/i.test(responsiveMapRaw)) blockers.push('responsive-plan-placeholder');
-  if (semanticCheck?.error) blockers.push('semantic-check-error');
-  if (preApprovalLockCheck?.error) blockers.push('pre-approval-lock-error');
-  if (copyLockCheck?.error) blockers.push('copy-lock-error');
-  if (outputLockCheck?.error) blockers.push('output-lock-error');
-
-  const overflowX = fullWidth > viewportWidth + 24 || domFullWidth > viewportWidth + 24;
-  if (overflowX) {
-    addFinding('high', 'overflow-x', `Rendered width ${fullWidth || domFullWidth}px exceeds viewport ${viewportWidth}px.`);
-    addStrategy('overflow-containment');
-  }
-
-  if (normalizedDeviceType === 'MOBILE' && Number(fixedBottomBar?.height || 0) >= 36 && Number(fixedBottomBar?.overlapCount || 0) > 0) {
-    addFinding('high', 'mobile-bottom-nav-overlap', `Fixed bottom navigation overlaps ${fixedBottomBar.overlapCount} meaningful elements in the initial viewport.`);
-    addStrategy('mobile-bottom-safe-area');
-  }
-
-  if (/design-flow-auto-layout-fix/.test(lowerHtml) && /position\s*:\s*static\s*!important/.test(lowerHtml)) {
-    addFinding('medium', 'behavior-changing-auto-fix', 'Local auto-fix changed shell behavior; keep this as explicit debt until a cleaner source/remap exists.');
-  }
-
-  const bottomNavRisk = normalizedDeviceType === 'DESKTOP'
-    && (/(bottom\s*:\s*0|bottom-0)/i.test(html) && /nav/i.test(html));
-  if (bottomNavRisk) {
-    addFinding('medium', 'desktop-bottom-nav-risk', 'Desktop render still appears to use a bottom-anchored nav pattern.');
-    addStrategy('desktop-nav-remap');
-  }
-
-  const fixedWidthRisk = normalizedDeviceType === 'DESKTOP'
-    && /(max-width\s*:\s*(3\d\d|4\d\d|5\d\d)px|min-width\s*:\s*(3\d\d|4\d\d|5\d\d)px)/i.test(html);
-  if (fixedWidthRisk) {
-    addFinding('medium', 'fixed-width-shell', 'Desktop layout contains a narrow fixed-width shell hint.');
-    addStrategy('widen-main-shell');
-  }
-
-  if (normalizedDeviceType === 'DESKTOP' && widthRatio !== null && widthRatio < 0.72) {
-    addFinding('medium', 'narrow-desktop-canvas', `Meaningful content width ratio is ${widthRatio}.`);
-    addStrategy(lowerResponsiveMap.includes('rail') ? 'desktop-rail-layout' : 'widen-main-shell');
-  }
-
-  if (normalizedDeviceType === 'TABLET' && /grid|card|table/i.test(html) && widthRatio !== null && widthRatio > 0.96) {
-    addFinding('medium', 'tablet-density-risk', `Tablet content width ratio is ${widthRatio}; grid density likely needs rebalancing.`);
-    addStrategy('tablet-grid-rebalance');
-  }
-
-  if (normalizedDeviceType === 'DESKTOP' && lowerResponsiveMap.includes('adaptive remap')) {
-    addStrategy('desktop-adaptive-remap');
-  }
-
-  if (!recommendedStrategies.length && normalizedDeviceType === 'DESKTOP' && widthRatio !== null && widthRatio < 0.84) {
-    addStrategy('widen-main-shell');
-  }
-  if (!recommendedStrategies.length && overflowX) {
-    addStrategy('overflow-containment');
-  }
-
-  return {
-    safeToAutoFix: blockers.length === 0,
-    deviceType: normalizedDeviceType,
-    metrics: {
-      viewportWidth,
-      fullWidth,
-      domFullWidth,
-      meaningfulWidth,
-      widthRatio,
-      fixedBottomBar,
-    },
-    blockers,
-    findings,
-    recommendedStrategies,
-  };
-}
-
-function injectAutoFixStyle(html, css) {
-  const styleTag = `\n<style id="design-flow-auto-layout-fix">\n${css.trim()}\n</style>\n`;
-  if (/<\/head>/i.test(html)) return html.replace(/<\/head>/i, `${styleTag}</head>`);
-  if (/<body[^>]*>/i.test(html)) return html.replace(/<body[^>]*>/i, (match) => `${match}${styleTag}`);
-  return `${styleTag}${html}`;
-}
-
-export function applyAutomatedLayoutFix({ html = '', deviceType = 'DESKTOP', diagnostics = null, attempt = 1 } = {}) {
-  const strategies = diagnostics?.recommendedStrategies || [];
-  const normalizedDeviceType = normalizeDeviceType(deviceType);
-  const cssChunks = [
-    '* { box-sizing: border-box; }',
-    'img, svg, canvas, video, table, pre { max-width: 100%; }',
-  ];
-
-  if (strategies.includes('overflow-containment')) {
-    cssChunks.push('html, body { overflow-x: hidden; }');
-  }
-
-  if (normalizedDeviceType === 'TABLET' && strategies.includes('tablet-grid-rebalance')) {
-    cssChunks.push(`@media (min-width: 768px) and (max-width: 1199px) {
-  main, [role="main"], .main, .page, .page-shell, .content, .content-shell {
-    width: min(960px, calc(100vw - 40px));
-    margin-left: auto;
-    margin-right: auto;
-  }
-  [class*="grid"], .grid {
-    gap: 20px !important;
-  }
-}`);
-  }
-
-  if (normalizedDeviceType === 'MOBILE' && strategies.includes('mobile-bottom-safe-area')) {
-    cssChunks.push(`@media (max-width: 767px) {
-  nav.fixed.bottom-0,
-  .bottom-nav,
-  [class*="bottom-nav"],
-  [class*="fixed"][class*="bottom-0"][class*="w-full"] {
-    position: static !important;
-    inset: auto !important;
-    width: 100% !important;
-    min-height: 56px !important;
-    margin-top: 12px !important;
-    padding-top: 6px !important;
-    padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 8px) !important;
-    border-top-left-radius: 12px !important;
-    border-top-right-radius: 12px !important;
-  }
-  main, [role="main"], .main, .page, .page-shell, .content, .content-shell {
-    padding-top: 16px !important;
-    padding-bottom: 24px !important;
-  }
-  main > section {
-    margin-bottom: 28px !important;
-  }
-  main > section:first-of-type {
-    margin-bottom: 20px !important;
-  }
-  .space-y-8 {
-    margin-bottom: 16px !important;
-  }
-  h1, [class*="text-5xl"], [class*="text-6xl"], [class*="text-7xl"] {
-    line-height: 0.94 !important;
-  }
-  [class*="grid"][class*="grid-cols-2"], .grid.grid-cols-2 {
-    gap: 14px !important;
-  }
-  [class*="aspect-[3/4"] {
-    max-height: 180px !important;
-  }
-  [class*="aspect-[2/3"] {
-    max-height: 140px !important;
-  }
-}`);
-  }
-
-  if (normalizedDeviceType === 'DESKTOP' && (strategies.includes('widen-main-shell') || strategies.includes('desktop-rail-layout') || strategies.includes('desktop-adaptive-remap'))) {
-    cssChunks.push(`@media (min-width: 1200px) {
-  main, [role="main"], .main, .page, .page-shell, .content, .content-shell, .layout-shell {
-    width: min(${attempt >= 2 ? '1440px' : '1280px'}, calc(100vw - ${attempt >= 2 ? '40px' : '64px'}));
-    margin-left: auto;
-    margin-right: auto;
-  }
-  [class*="grid"], .grid {
-    gap: ${attempt >= 2 ? '28px' : '24px'} !important;
-  }
-}`);
-  }
-
-  if (normalizedDeviceType === 'DESKTOP' && strategies.includes('desktop-nav-remap')) {
-    cssChunks.push(`@media (min-width: 1200px) {
-  nav[style*="bottom"], .bottom-nav, [class*="bottom-nav"] {
-    position: static !important;
-    inset: auto !important;
-    width: auto !important;
-    border-top: 0 !important;
-  }
-}`);
-  }
-
-  if (attempt >= 2 && normalizedDeviceType === 'DESKTOP') {
-    cssChunks.push(`@media (min-width: 1200px) {
-  body > div, body > main, .app, .app-shell, .shell, .shell-layout, .workspace, .workspace-shell {
-    width: min(1440px, calc(100vw - 32px));
-    margin-left: auto;
-    margin-right: auto;
-  }
-  [class*="sidebar"], [class*="rail"] {
-    flex-shrink: 0;
-  }
-}`);
-  }
-
-  if (!cssChunks.length) return html;
-  return injectAutoFixStyle(html, cssChunks.join('\n\n'));
-}
-
-export async function diagnoseLocalHtmlLayout({ htmlPath, outdir, deviceType = 'DESKTOP', stateFile = null, preApprovalLockFile = null, copyLockFile = null, outputLockFile = null, responsiveMapFile = null, sourceLabel = 'layout-diagnose', viewport = defaultViewportForDeviceType(deviceType), localPatchApplied = false, localPatchStrategy = null, derivedFromScreenId = null, pageKey = null, theme = null } = {}) {
+export async function diagnoseLocalHtmlLayout({ htmlPath, outdir, deviceType = 'DESKTOP', stateFile = null, preApprovalLockFile = null, copyLockFile = null, responsiveMapFile = null, sourceLabel = 'layout-diagnose', viewport = defaultViewportForDeviceType(deviceType), localPatchApplied = false, localPatchStrategy = null, derivedFromScreenId = null, pageKey = null, theme = null } = {}) {
+  const diagnosticsDir = path.join(runtimeDirForOutdir(outdir), 'diagnostics');
+  await ensureDir(diagnosticsDir);
   const artifacts = await reviewLocalHtmlArtifacts({
     htmlPath,
     outdir,
@@ -2750,10 +1829,11 @@ export async function diagnoseLocalHtmlLayout({ htmlPath, outdir, deviceType = '
       theme,
       preApprovalLockFile,
       copyLockFile,
-      outputLockFile,
       localPatchApplied,
       localPatchStrategy,
       derivedFromScreenId,
+      localRenderDir: diagnosticsDir,
+      localRenderSuffix: 'local',
     },
   });
   const html = await fs.readFile(artifacts.htmlPath, 'utf8');
@@ -2769,11 +1849,10 @@ export async function diagnoseLocalHtmlLayout({ htmlPath, outdir, deviceType = '
     semanticCheck: meta.semanticCheck || null,
     preApprovalLockCheck: meta.preApprovalLockCheck || null,
     copyLockCheck: meta.copyLockCheck || null,
-    outputLockCheck: meta.outputLockCheck || null,
     responsiveMapText,
   });
   const diagnosticsStem = artifactStemForOutdir(outdir, { deviceType, breakpoint: breakpointForDeviceType(deviceType), pageKey, theme }, { stateFile, pageKey, theme });
-  const diagnosticsPath = path.join(outdir, `${diagnosticsStem}.layout-diagnostics.json`);
+  const diagnosticsPath = path.join(diagnosticsDir, `${diagnosticsStem}.layout-diagnostics.json`);
   await writeJson(diagnosticsPath, diagnostics);
   await patchJson(artifacts.metaPath, {
     diagnosticsPath,
@@ -2786,22 +1865,150 @@ export async function diagnoseLocalHtmlLayout({ htmlPath, outdir, deviceType = '
   };
 }
 
+
+function normalizeStitchImageResult(value) {
+  if (!value) return null;
+  if (typeof value === 'string') return value;
+  if (value.downloadUrl) return value.downloadUrl;
+  if (value.url) return value.url;
+  if (value.imageUrl) return value.imageUrl;
+  if (value.screenshot?.downloadUrl) return value.screenshot.downloadUrl;
+  if (value.data?.screenshot?.downloadUrl) return value.data.screenshot.downloadUrl;
+  return null;
+}
+
+async function stitchCanvasImageUrlForScreen(screen) {
+  if (!screen) return null;
+  if (typeof screen.getImage === 'function') {
+    try {
+      const result = await screen.getImage();
+      const url = normalizeStitchImageResult(result);
+      if (url) return url;
+    } catch {
+      // fall back to screen metadata
+    }
+  }
+  return normalizeStitchImageResult(screen);
+}
+
 export async function exportScreenArtifacts(screen, outdir, meta = {}, viewport = defaultViewportForDeviceType(meta.deviceType), options = {}) {
   const htmlUrl = await screen.getHtml();
-  await ensureDir(outdir);
-  const stem = artifactStemForOutdir(outdir, meta, options);
-  const htmlPath = path.join(outdir, `${stem}.html`);
+  const canonicalOutdir = path.resolve(outdir);
+  const targetOutdir = options.candidate === true ? candidateOutdirForOperation(canonicalOutdir, meta, options) : canonicalOutdir;
+  await ensureDir(targetOutdir);
+  const stem = artifactStemForOutdir(canonicalOutdir, meta, options);
+  const htmlPath = path.join(targetOutdir, `${stem}.html`);
   await fetchToFile(htmlUrl, htmlPath);
-  return await reviewLocalHtmlArtifacts({
-    htmlPath,
-    outdir,
-    meta: {
-      ...meta,
-      htmlUrl,
-      outputScreenId: screen.screenId || screen.id || null,
-      exportedAt: new Date().toISOString(),
-    },
-    viewport,
-    options,
+  const metaPath = metaPathForOutdir(targetOutdir, stem);
+  await ensureDir(path.dirname(metaPath));
+  await patchJson(metaPath, {
+    ...meta,
+    htmlUrl,
+    outputScreenId: screen.screenId || screen.id || null,
+    exportedAt: new Date().toISOString(),
+    canonicalOutdir,
+    candidateOutdir: targetOutdir !== canonicalOutdir ? targetOutdir : null,
+    lifecycleState: targetOutdir !== canonicalOutdir ? 'candidate-ready' : 'accepted-root-export',
   });
+
+  let localHtmlRender = null;
+  if (options.renderLocalDiagnostic !== false && options.renderLocalDiagnostic !== 'false') {
+    const diagnosticsDir = options.localRenderDir ? path.resolve(options.localRenderDir) : path.resolve(targetOutdir);
+    await ensureDir(diagnosticsDir);
+    const reviewed = await reviewLocalHtmlArtifacts({
+      htmlPath,
+      outdir: targetOutdir,
+      meta: {
+        ...meta,
+        htmlUrl,
+        outputScreenId: screen.screenId || screen.id || null,
+        exportedAt: new Date().toISOString(),
+      },
+      viewport,
+      options: {
+        ...options,
+        localRenderDir: diagnosticsDir,
+        localRenderSuffix: 'local',
+      },
+    });
+    localHtmlRender = {
+      imagePath: reviewed.imagePath,
+      fullImagePath: reviewed.fullImagePath,
+      source: 'full-access-local-html-render',
+    };
+  }
+
+  if (localHtmlRender) {
+    const checkedMeta = await readJsonIfExists(metaPath, {});
+    const requiredNounMisses = [
+      ...hardRequiredNounMisses(checkedMeta.preApprovalLockCheck),
+      ...hardRequiredNounMisses(checkedMeta.copyLockCheck),
+    ];
+    const postExportRequiredNounCheck = {
+      passed: requiredNounMisses.length === 0,
+      hardMissing: requiredNounMisses,
+      checkedAt: new Date().toISOString(),
+      evidence: 'full-access local HTML render and exported HTML lock checks',
+    };
+    await patchJson(metaPath, { postExportRequiredNounCheck });
+    if (!postExportRequiredNounCheck.passed) {
+      throw new Error(`Post-export required noun check failed: ${requiredNounMisses.map((item) => item.expected || item.kind).join(', ')}`);
+    }
+  }
+
+  const stitchImageUrl = await stitchCanvasImageUrlForScreen(screen);
+  if (!stitchImageUrl) {
+    const fallbackImagePath = path.join(targetOutdir, `${stem}.png`);
+    if (localHtmlRender?.imagePath) await fs.copyFile(localHtmlRender.imagePath, fallbackImagePath);
+    const fallbackDimensions = await pngDimensionsFromFile(fallbackImagePath);
+    await patchJson(metaPath, {
+      screenshotSource: localHtmlRender ? 'local-html-full-access-fallback' : 'none',
+      screenshotFallback: {
+        reason: 'stitch-canvas-image-unavailable',
+        releaseQuality: false,
+        imagePath: localHtmlRender?.imagePath ? fallbackImagePath : null,
+        dimensions: fallbackDimensions,
+        capturedAt: new Date().toISOString(),
+      },
+      localHtmlRender,
+    });
+    return {
+      htmlPath,
+      imagePath: localHtmlRender?.imagePath ? fallbackImagePath : null,
+      fullImagePath: localHtmlRender?.fullImagePath || null,
+      metaPath,
+      localImagePath: localHtmlRender?.imagePath || null,
+      localFullImagePath: localHtmlRender?.fullImagePath || null,
+      screenshotSource: localHtmlRender ? 'local-html-full-access-fallback' : 'none',
+      degradedScreenshot: true,
+    };
+  }
+
+  const canvasImagePath = path.join(targetOutdir, `${stem}.png`);
+  await fetchToFile(stitchImageUrl, canvasImagePath);
+  const stitchDimensions = await pngDimensionsFromFile(canvasImagePath);
+  const stitchScreenshotSanity = assessStitchScreenshotDimensions(stitchDimensions, viewport);
+  await patchJson(metaPath, {
+    screenshotSource: 'stitch-canvas',
+    stitchCanvasScreenshot: {
+      imagePath: canvasImagePath,
+      imageUrl: stitchImageUrl,
+      capturedAt: new Date().toISOString(),
+      dimensions: stitchDimensions,
+      sanity: stitchScreenshotSanity,
+    },
+    localHtmlRender,
+  });
+  return {
+    htmlPath,
+    imagePath: canvasImagePath,
+    fullImagePath: null,
+    metaPath,
+    localImagePath: localHtmlRender?.imagePath || null,
+    localFullImagePath: localHtmlRender?.fullImagePath || null,
+    screenshotSource: 'stitch-canvas',
+    stitchCanvasImageUrl: stitchImageUrl,
+    canonicalOutdir,
+    candidateOutdir: targetOutdir !== canonicalOutdir ? targetOutdir : null,
+  };
 }

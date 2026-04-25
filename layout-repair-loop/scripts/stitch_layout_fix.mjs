@@ -59,14 +59,14 @@ const breakpoint = breakpointForDeviceType(deviceType);
 const theme = args.theme || args['theme-name'] || null;
 const artifactStem = artifactStemForOutdir(outdir || process.cwd(), { deviceType, breakpoint, pageKey: paths.pageKey, theme }, { stateFile, pageKey: paths.pageKey, theme });
 const viewport = viewportOptionsFromArgs(args, deviceType);
-const stitchRoot = paths.stitchRoot || (stateFile ? path.dirname(stateFile) : (outdir ? path.dirname(outdir) : null));
-
-if (!htmlPath || !outdir || !stitchRoot) {
-  console.error('usage: stitch_layout_fix.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--theme <theme-slug>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--diagnostics-file <file>] [--responsive-plan-file <file>] [--responsive-map-file <legacy-file>] [--attempt 1|2] [--in-place true|false] [--confirm-in-place true] [--keep-attempts true|false] [--backup-original true|false]');
+if (!htmlPath || !outdir) {
+  console.error('usage: stitch_layout_fix.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--theme <theme-slug>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--diagnostics-file <file>] [--responsive-plan-file <file>] [--responsive-map-file <legacy-file>] [--attempt 1|2] [--in-place true|false] [--confirm-in-place true] [--keep-attempts true|false] [--backup-original true|false]');
   process.exit(1);
 }
 
-const diagnosticsFile = args['diagnostics-file'] || path.join(outdir, `${artifactStem}.layout-diagnostics.json`);
+const diagnosticsDir = path.join(outdir, 'runtime', 'diagnostics');
+await ensureDir(diagnosticsDir);
+const diagnosticsFile = args['diagnostics-file'] || path.join(diagnosticsDir, `${artifactStem}.layout-diagnostics.json`);
 let diagnostics = await readJsonIfExists(diagnosticsFile, null);
 if (!diagnostics) {
   const diagnosed = await diagnoseLocalHtmlLayout({
@@ -76,8 +76,7 @@ if (!diagnostics) {
     stateFile,
     preApprovalLockFile: args['pre-approval-lock-file'] || null,
     copyLockFile: args['copy-lock-file'] || null,
-    outputLockFile: args['output-lock-file'] || null,
-    responsiveMapFile: args['responsive-plan-file'] || args['responsive-map-file'] || (paths.pageDir ? path.join(paths.pageDir, 'responsive-plan.md') : null),
+      responsiveMapFile: args['responsive-plan-file'] || args['responsive-map-file'] || (paths.pageDir ? path.join(paths.pageDir, 'responsive-plan.md') : null),
     sourceLabel: 'layout-fix-pre-diagnose',
     viewport,
     localPatchApplied: false,
@@ -99,11 +98,16 @@ if (!diagnostics.safeToAutoFix) {
   process.exit(0);
 }
 
-const fixesRoot = path.join(stitchRoot, 'layout-fixes', artifactStem);
-const attemptDir = keepAttempts ? path.join(fixesRoot, `attempt-${attempt}`) : path.join(fixesRoot, 'current');
-await ensureDir(fixesRoot);
-if (!inPlace) await ensureDir(attemptDir);
-const sourceBackupPath = path.join(fixesRoot, 'source-before-layout-fix.html');
+const attemptsRoot = path.join(outdir, 'attempts');
+const attemptLabel = keepAttempts ? `layout-fix-${attempt}` : 'layout-fix-current';
+const attemptDir = path.join(attemptsRoot, attemptLabel);
+const attemptRuntimeDir = path.join(attemptDir, 'runtime');
+await ensureDir(attemptsRoot);
+if (!inPlace) {
+  await ensureDir(attemptDir);
+  await ensureDir(attemptRuntimeDir);
+}
+const sourceBackupPath = path.join(diagnosticsDir, `${artifactStem}.source-before-layout-fix.html`);
 const originalHtml = await fs.readFile(htmlPath, 'utf8');
 const fixedHtml = applyAutomatedLayoutFix({ html: originalHtml, deviceType, diagnostics, attempt });
 if (inPlace && backupOriginal && !await fileExists(sourceBackupPath)) {
@@ -119,9 +123,9 @@ async function restoreInPlaceOnFailure() {
   return false;
 }
 
-const layoutRepairPath = path.join(fixesRoot, 'layout-repair.md');
+const layoutRepairPath = path.join(inPlace ? diagnosticsDir : attemptDir, 'layout-repair.md');
 await fs.writeFile(layoutRepairPath, `# Layout repair\n\n- Breakpoint: ${breakpoint}\n- Attempt: ${attempt}\n- Source html: ${path.resolve(htmlPath)}\n- Diagnostics file: ${path.resolve(diagnosticsFile)}\n- Selected strategies: ${(diagnostics.recommendedStrategies || []).join(', ') || 'none'}\n- Auto-fix allowed: ${diagnostics.safeToAutoFix ? 'yes' : 'no'}\n- Guardrail: preserve semantics and copy locks\n`);
-await writeJson(path.join(fixesRoot, 'layout-diagnostics.json'), diagnostics);
+await writeJson(path.join(inPlace ? diagnosticsDir : attemptRuntimeDir, 'layout-diagnostics.json'), diagnostics);
 
 const reviewOutdir = inPlace ? outdir : attemptDir;
 const reviewed = await diagnoseLocalHtmlLayout({
@@ -131,7 +135,6 @@ const reviewed = await diagnoseLocalHtmlLayout({
   stateFile,
   preApprovalLockFile: args['pre-approval-lock-file'] || null,
   copyLockFile: args['copy-lock-file'] || null,
-  outputLockFile: args['output-lock-file'] || null,
   responsiveMapFile: args['responsive-plan-file'] || args['responsive-map-file'] || (paths.pageDir ? path.join(paths.pageDir, 'responsive-plan.md') : null),
   sourceLabel: `layout-fix-attempt-${attempt}`,
   viewport,
@@ -152,7 +155,7 @@ process.stdout.write(JSON.stringify({
   sourceBackupPath: await fileExists(sourceBackupPath) ? sourceBackupPath : null,
   fixedHtmlPath,
   layoutRepairPath,
-  diagnosticsFile: path.join(fixesRoot, 'layout-diagnostics.json'),
+  diagnosticsFile: path.join(inPlace ? diagnosticsDir : attemptRuntimeDir, 'layout-diagnostics.json'),
   reviewed,
   restoredAfterFailedReview,
 }, null, 2) + '\n');

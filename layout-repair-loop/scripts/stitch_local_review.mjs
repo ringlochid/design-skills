@@ -8,6 +8,7 @@ import {
   readJsonIfExists,
   resolveDesignPaths,
   artifactStemForOutdir,
+  metaPathForOutdir,
 } from './stitch_common.mjs';
 
 const args = parseArgs(process.argv);
@@ -25,18 +26,17 @@ const outdir = paths.outdir || null;
 const stateFile = paths.stateFile || null;
 const preApprovalLockFile = args['pre-approval-lock-file'] || null;
 const copyLockFile = args['copy-lock-file'] || null;
-const outputLockFile = args['output-lock-file'] || null;
 const sourceLabel = args['source-label'] || 'local-layout-repair';
 const theme = args.theme || args['theme-name'] || null;
 const viewport = viewportOptionsFromArgs(args, deviceType);
 
 if (!htmlPath || !outdir) {
-  console.error('usage: stitch_local_review.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--theme <theme-slug>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--source-label <label>] [--viewport-width <px>] [--viewport-height <px>] [--device-scale-factor <n>] [--render-delay-ms <ms>]');
+  console.error('usage: stitch_local_review.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--theme <theme-slug>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--source-label <label>] [--viewport-width <px>] [--viewport-height <px>] [--device-scale-factor <n>] [--render-delay-ms <ms>]');
   process.exit(1);
 }
 
 const stem = artifactStemForOutdir(outdir, { deviceType, breakpoint: breakpointForDeviceType(deviceType), pageKey: paths.pageKey, theme }, { stateFile, pageKey: paths.pageKey, theme });
-const existingMeta = await readJsonIfExists(`${outdir}/${stem}.meta.json`, {});
+const existingMeta = await readJsonIfExists(metaPathForOutdir(outdir, stem), {});
 const artifacts = await reviewLocalHtmlArtifacts({
   htmlPath,
   outdir,
@@ -55,9 +55,10 @@ const artifacts = await reviewLocalHtmlArtifacts({
     stateFile,
     preApprovalLockFile,
     copyLockFile,
-    outputLockFile,
     pageKey: paths.pageKey,
     theme,
+    localRenderDir: `${outdir}/runtime/diagnostics`,
+    localRenderSuffix: 'local',
   },
 });
 
@@ -70,6 +71,5 @@ process.stdout.write(JSON.stringify({
   semanticCheck: meta.semanticCheck || null,
   preApprovalLockCheck: meta.preApprovalLockCheck || null,
   copyLockCheck: meta.copyLockCheck || null,
-  outputLockCheck: meta.outputLockCheck || null,
   sourceLabel,
 }, null, 2) + '\n');

@@ -20,6 +20,7 @@ import {
   compactProjectScreenRecord,
   loadProjectScreenRecord,
   slugifyScreenTitle,
+  runtimeDirForOutdir,
 } from './stitch_common.mjs';
 
 function slugifyToken(value, fallback = 'reference') {
@@ -54,8 +55,8 @@ const outdir = args.outdir
   ? path.resolve(args.outdir)
   : (stitchRoot ? path.join(stitchRoot, 'references', referenceName) : null);
 const viewport = viewportOptionsFromArgs(args, deviceType);
-const inventoryPath = paths.config?.runtimeRoot
-  ? path.join(paths.config.runtimeRoot, 'stitch-project-screens.json')
+const inventoryPath = paths.stitchRoot
+  ? path.join(runtimeDirForOutdir(paths.stitchRoot), 'stitch-project-screens.json')
   : null;
 
 if (!outdir || (!args['project-id'] && !stateFile) || (!explicitScreenId && !screenQuery && !stateFile)) {
@@ -78,7 +79,7 @@ const result = await withKeyFallback(async (stitch) => {
     const { runtime } = await loadProjectRuntime({ projectRoot: paths.projectRoot, config: paths.config, startPath: stateFile }).catch(() => ({ runtime: null }));
     const projectId = args['project-id'] || runtime?.projectId || null;
     if (!projectId) {
-      throw new Error('Unable to resolve shared Stitch project for explicit reference sync. Provide --project-id or ensure 04-generated/stitch/project.json exists.');
+      throw new Error('Unable to resolve shared Stitch project for explicit reference sync. Provide --project-id or ensure the page runtime/project.json exists.');
     }
     const project = stitch.project(projectId);
     projectScreens = await listProjectScreens(project).catch(() => []);
@@ -103,7 +104,7 @@ const result = await withKeyFallback(async (stitch) => {
       if (explicitScreenId) {
         throw new Error(`Unable to resolve Stitch project screen id ${explicitScreenId} in project ${projectId}.`);
       }
-      throw new Error(`Unable to resolve Stitch project screen for query "${screenQuery}" in project ${projectId}. Check 04-generated/stitch/stitch-project-screens.json for available screen titles.`);
+      throw new Error(`Unable to resolve Stitch project screen for query "${screenQuery}" in project ${projectId}. Check 04-generated/stitch/<page>/runtime/stitch-project-screens.json for available screen titles.`);
     }
     selection = {
       projectId,
@@ -135,7 +136,7 @@ const result = await withKeyFallback(async (stitch) => {
     referenceName,
     deviceType,
     modelId,
-  }, viewport, { stateFile: selection.statePath || stateFile });
+  }, viewport, { stateFile: selection.statePath || stateFile, renderLocalDiagnostic: !['0', 'false', 'no'].includes(String(args['render-local-diagnostic'] || 'true').toLowerCase()) });
   const persisted = await persistProjectContext({
     stitch,
     projectId: selection.projectId,

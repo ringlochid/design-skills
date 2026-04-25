@@ -1,6 +1,6 @@
 ---
 name: responsive-plan-writer
-description: Write responsive breakpoint contracts and remap plans for a design repo. Use after primary design review, before target breakpoint generation/remap or layout repair.
+description: Write responsive breakpoint contracts and remap plans for a design repo. Use when making/remapping mobile, tablet, or desktop versions, when breakpoint structure is wrong, or before target breakpoint generation/remap.
 ---
 
 # Responsive Plan Writer
@@ -23,6 +23,19 @@ Goal: define target breakpoint behavior before remap or repair.
 ## Stop boundary
 
 Do not enter layout repair if the target breakpoint does not yet have a valid shell.
+
+## Remap contract
+
+Responsive planning is not just breakpoint notes. It must define the remap contract used after the primary breakpoint is reviewed:
+
+- primary breakpoint and why it is source-of-truth
+- target breakpoint order
+- what content/copy must remain stable
+- what layout shell should change per breakpoint
+- what must not be repaired locally because it requires remap/regeneration
+- primary screen/project lineage once available, so target remap prompts can cite the approved source
+
+Non-primary breakpoint generation should use breakpoint-specific remap guidance, not a generic copy of the primary generation prompt.
 
 ## Output shape
 

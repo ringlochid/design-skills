@@ -24,14 +24,16 @@ Goal: create or validate the design repo skeleton without inventing product sema
 - `00-product/source-inventory.md`
 - optional migration notes
 
+## Naming rule
+
+Use a concrete product-facing project name. Do not use temp paths, timestamps, `e2e`, `smoke`, `test`, `demo`, `placeholder`, or `design-skills` as the design project/product name. Those belong in folder names or logs only.
+
 ## Stop boundary
 
 Do not fabricate product goals, page semantics, workflows, or design-system claims. If source truth is missing, stop with exact missing inputs.
 
-## Scripts
+## Internal helpers
 
-- `scripts/design_repo_preflight.mjs`
-- `scripts/design_repo_bootstrap_project.mjs`
-- `scripts/design_repo_bootstrap_page.mjs`
+The skill reports readiness, created folders, missing source truth, and migration notes.
 
 Legacy bootstrap helpers were removed from the active pack. For manual mapping from old artifacts, read `../design-repo-common/references/legacy-design-flow-migration.md`.

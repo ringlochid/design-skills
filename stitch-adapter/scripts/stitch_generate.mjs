@@ -29,7 +29,7 @@ if (!confirmExternalWrite) {
 }
 
 if (!promptFile || !outdir) {
-  console.error('usage: stitch_generate.mjs --prompt-file <file> [--project-root <dir> --page <page-key> | --outdir <dir>] [--title <name>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--model-id GEMINI_3_PRO|GEMINI_3_FLASH] [--project-id <id>] [--allow-new-project] [--state-file <file>] [--state-update current|none] [--primary-breakpoint mobile|desktop] [--prompt-stage <stage>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--confirm-external-write true] [--viewport-width <px>] [--viewport-height <px>] [--device-scale-factor <n>] [--render-delay-ms <ms>]');
+  console.error('usage: stitch_generate.mjs --prompt-file <file> [--project-root <dir> --page <page-key> | --outdir <dir>] [--title <name>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--model-id GEMINI_3_PRO|GEMINI_3_FLASH] [--project-id <id>] [--allow-new-project] [--state-file <file>] [--state-update current|none] [--primary-breakpoint mobile|desktop] [--prompt-stage <stage>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--confirm-external-write true] [--viewport-width <px>] [--viewport-height <px>] [--device-scale-factor <n>] [--render-delay-ms <ms>] [--render-local-diagnostic false]');
   process.exit(1);
 }
 
@@ -50,7 +50,6 @@ await assertPromptPacketReadyForStitch({
   promptStage,
   preApprovalLockFile: args['pre-approval-lock-file'] || null,
   copyLockFile: args['copy-lock-file'] || null,
-  outputLockFile: args['output-lock-file'] || null,
 });
 const { runtime: existingRuntime, config: projectConfig } = await loadProjectRuntime({ projectRoot: paths.projectRoot, startPath: outdir }).catch(() => ({ runtime: null, config: null }));
 const { state } = await loadStitchState({ outdir, stateFile }).catch(() => ({ state: null }));
@@ -71,7 +70,7 @@ const priorArtifactsExist = Boolean(
 );
 
 if (!effectiveProjectId && priorArtifactsExist && !allowNewProject) {
-  console.error('Refusing to create a fresh Stitch project: prior design artifacts exist but no reusable projectId was resolved. Restore 04-generated/stitch/project.json, pass --project-id, or rerun with --allow-new-project if you intentionally want a new project.');
+  console.error('Refusing to create a fresh Stitch project: prior design artifacts exist but no reusable projectId was resolved. Restore 04-generated/stitch/<page>/runtime/project.json, pass --project-id, or rerun with --allow-new-project if you intentionally want a new project.');
   process.exit(1);
 }
 const result = await withKeyFallback(async (stitch) => {
@@ -80,6 +79,21 @@ const result = await withKeyFallback(async (stitch) => {
     project,
     deviceType,
     run: (activeProject) => generateScreenWithSdkProjectionFallback(activeProject, prompt, deviceType, modelId),
+  });
+  const earlyPersisted = await persistProjectContext({
+    stitch,
+    projectId: project.projectId,
+    outdir,
+    stateFile,
+    deviceType,
+    screenId: screen.screenId || screen.id || null,
+    metaPath: null,
+    updateState: stateUpdate === 'none' ? 'none' : 'current',
+    recovery,
+    projectRoot: paths.projectRoot,
+    pageKey: paths.pageKey,
+    primaryBreakpoint,
+    sourcePromptFile: promptFile,
   });
   const artifacts = await exportScreenArtifacts(screen, outdir, {
     mode: 'generate',
@@ -93,12 +107,11 @@ const result = await withKeyFallback(async (stitch) => {
     theme: args.theme || args['theme-name'] || null,
     preApprovalLockFile: args['pre-approval-lock-file'] || null,
     copyLockFile: args['copy-lock-file'] || null,
-    outputLockFile: args['output-lock-file'] || null,
-  }, viewport, { stateFile, pageKey: paths.pageKey, theme: args.theme || args['theme-name'] || null });
+  }, viewport, { stateFile, pageKey: paths.pageKey, theme: args.theme || args['theme-name'] || null, candidate: true, attemptOperation: 'generate', renderLocalDiagnostic: !['0', 'false', 'no'].includes(String(args['render-local-diagnostic'] || 'true').toLowerCase()) });
   const persisted = await persistProjectContext({
     stitch,
     projectId: project.projectId,
-    outdir,
+    outdir: artifacts.candidateOutdir || outdir,
     stateFile,
     deviceType,
     screenId: screen.screenId || screen.id || null,
@@ -112,6 +125,7 @@ const result = await withKeyFallback(async (stitch) => {
   });
   await patchJson(artifacts.metaPath, {
     recovery,
+    earlyStatePath: earlyPersisted.statePath,
     statePath: persisted.statePath,
     designSystem: persisted.designSystem,
   });
@@ -121,6 +135,7 @@ const result = await withKeyFallback(async (stitch) => {
     screenId: screen.screenId || screen.id || null,
     recovery,
     stateUpdate,
+    earlyStatePath: earlyPersisted.statePath,
     statePath: persisted.statePath,
     designSystem: persisted.designSystem,
     sessionIndexPath: persisted.sessionIndexPath,

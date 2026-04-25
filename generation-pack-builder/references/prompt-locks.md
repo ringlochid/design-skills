@@ -1,3 +1,3 @@
 # Prompt locks
 
-Generation packs should include pre-approval, copy, and output locks so tool calls preserve product semantics, content, and expected artifacts.
+Generation packs should include pre-approval and copy locks so tool calls preserve product semantics and visible content. Output quality belongs to review gates, not text locks.

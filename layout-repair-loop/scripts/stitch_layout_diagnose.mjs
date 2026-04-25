@@ -19,7 +19,7 @@ const stateFile = paths.stateFile;
 const viewport = viewportOptionsFromArgs(args, deviceType);
 
 if (!htmlPath || !outdir) {
-  console.error('usage: stitch_layout_diagnose.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--theme <theme-slug>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--responsive-plan-file <file>] [--responsive-map-file <legacy-file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--viewport-width <px>] [--viewport-height <px>] [--device-scale-factor <n>] [--render-delay-ms <ms>]');
+  console.error('usage: stitch_layout_diagnose.mjs --html-file <path> [--project-root <dir> --page <page-key> | --outdir <dir>] [--theme <theme-slug>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--state-file <file>] [--responsive-plan-file <file>] [--responsive-map-file <legacy-file>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--viewport-width <px>] [--viewport-height <px>] [--device-scale-factor <n>] [--render-delay-ms <ms>]');
   process.exit(1);
 }
 
@@ -30,7 +30,6 @@ const result = await diagnoseLocalHtmlLayout({
   stateFile,
   preApprovalLockFile: args['pre-approval-lock-file'] || null,
   copyLockFile: args['copy-lock-file'] || null,
-  outputLockFile: args['output-lock-file'] || null,
   responsiveMapFile: args['responsive-plan-file'] || args['responsive-map-file'] || (paths.pageDir ? path.join(paths.pageDir, 'responsive-plan.md') : null),
   sourceLabel: args['source-label'] || 'layout-diagnose',
   viewport,

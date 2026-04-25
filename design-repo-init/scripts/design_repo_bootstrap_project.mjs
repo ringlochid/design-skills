@@ -5,8 +5,31 @@ import process from 'node:process';
 import { parseArgs, ensureDir, writeJson } from './stitch_common.mjs';
 
 const args = parseArgs(process.argv);
+
+function humanizeSlug(value) {
+  return String(value || '')
+    .replace(/[_-]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .replace(/\b\w/g, (ch) => ch.toUpperCase());
+}
+
+function isSloppyProjectName(value) {
+  const name = String(value || '').trim();
+  if (!name) return true;
+  if (/\b(tmp|temp|test|smoke|e2e|demo|sample|placeholder|draft)\b/i.test(name)) return true;
+  if (/\d{6,}|\d{4}[-_]?\d{2}[-_]?\d{2}|T\d{4,}/i.test(name)) return true;
+  if (/^(design[-_ ]?skills|untitled|new project|project)$/i.test(name)) return true;
+  return false;
+}
+
 const projectRoot = path.resolve(args['project-root'] || process.cwd());
-const productName = args['product-name'] || path.basename(projectRoot);
+const rawProductName = args['product-name'] || path.basename(projectRoot);
+const productName = humanizeSlug(rawProductName);
+if (isSloppyProjectName(productName)) {
+  console.error(`Refusing sloppy design project name: ${rawProductName}. Provide a concrete product-facing --product-name, e.g. "PulseOps AI Console".`);
+  process.exit(1);
+}
 const dirs = [
   '00-product',
   '01-system/themes',
@@ -17,9 +40,6 @@ const dirs = [
   '03-references/backend',
   '03-references/generated-assets',
   '04-generated/stitch',
-  '04-generated/html',
-  '04-generated/images',
-  '04-generated/screenshots',
   '05-review',
   '06-handoff',
 ];
@@ -58,9 +78,22 @@ await writeJson(path.join(projectRoot, '00-product/design-config.json'), {
   },
   stitch: {
     generatedRoot: '04-generated/stitch',
-    projectRuntime: '04-generated/stitch/project.json',
-    globalSessionIndex: '04-generated/stitch/stitch-sessions.json'
+    projectRuntime: null,
+    globalSessionIndex: null
   }
 });
 created.push('00-product/design-config.json');
+
+const repoStatusPath = path.join(projectRoot, '00-product/repo-status.json');
+const repoStatus = {
+  projectRoot,
+  missingDirs: [],
+  missingFiles: ['00-product/brief.md', '01-system/DESIGN.md'].filter((rel) => created.includes(rel)),
+  ready: false,
+  designWorkspaceSignals: { designWorkspaceReady: true },
+  createdBy: 'design_repo_bootstrap_project',
+  checkedAt: new Date().toISOString(),
+};
+await writeJson(repoStatusPath, repoStatus);
+if (!created.includes('00-product/repo-status.json')) created.push('00-product/repo-status.json');
 console.log(JSON.stringify({ projectRoot, created }, null, 2));

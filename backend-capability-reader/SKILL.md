@@ -28,7 +28,6 @@ Goal: extract UI-relevant backend capabilities without letting existing endpoint
 
 Do not produce layout. Do not reduce the design to CRUD endpoints. Hand off to `product-brief-writer` or `page-spec-writer`.
 
-## Scripts
+## Internal helpers
 
-- `scripts/openapi_inventory.py` (use `--out 03-references/backend/capabilities.md`)
-- `scripts/route_inventory.py`
+Backend route/OpenAPI inventory helpers may be used internally. The skill reports reviewed capabilities and constraints.

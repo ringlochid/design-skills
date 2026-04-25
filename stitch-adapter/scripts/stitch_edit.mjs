@@ -30,7 +30,7 @@ if (!confirmExternalWrite) {
 }
 
 if (!promptFile || !outdir || (!projectId && !stateFile) || (!screenId && !stateFile)) {
-  console.error('usage: stitch_edit.mjs [--project-id <id>] [--screen-id <id>] --prompt-file <file> [--project-root <dir> --page <page-key> | --outdir <dir>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--model-id GEMINI_3_PRO|GEMINI_3_FLASH] [--state-file <file>] [--state-update current|none] [--primary-breakpoint mobile|desktop] [--prompt-stage <stage>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--output-lock-file <file>] [--confirm-external-write true] [--viewport-width <px>] [--viewport-height <px>] [--device-scale-factor <n>] [--render-delay-ms <ms>]');
+  console.error('usage: stitch_edit.mjs [--project-id <id>] [--screen-id <id>] --prompt-file <file> [--project-root <dir> --page <page-key> | --outdir <dir>] [--device-type MOBILE|TABLET|DESKTOP|AGNOSTIC] [--model-id GEMINI_3_PRO|GEMINI_3_FLASH] [--state-file <file>] [--state-update current|none] [--primary-breakpoint mobile|desktop] [--prompt-stage <stage>] [--pre-approval-lock-file <file>] [--copy-lock-file <file>] [--confirm-external-write true] [--viewport-width <px>] [--viewport-height <px>] [--device-scale-factor <n>] [--render-delay-ms <ms>] [--render-local-diagnostic false]');
   process.exit(1);
 }
 
@@ -51,7 +51,6 @@ await assertPromptPacketReadyForStitch({
   promptStage,
   preApprovalLockFile: args['pre-approval-lock-file'] || null,
   copyLockFile: args['copy-lock-file'] || null,
-  outputLockFile: args['output-lock-file'] || null,
 });
 const result = await withKeyFallback(async (stitch) => {
   const selection = await resolveStitchSelectionFromState({ outdir, stateFile, projectId, screenId, deviceType, mode: 'edit', primaryBreakpoint });
@@ -61,6 +60,21 @@ const result = await withKeyFallback(async (stitch) => {
     project,
     deviceType,
     run: () => editScreenWithSdkProjectionFallback(sourceScreen, prompt, deviceType, modelId),
+  });
+  const earlyPersisted = await persistProjectContext({
+    stitch,
+    projectId: selection.projectId,
+    outdir,
+    stateFile,
+    deviceType,
+    screenId: edited.screenId || edited.id || null,
+    metaPath: null,
+    updateState: stateUpdate === 'none' ? 'none' : 'current',
+    recovery,
+    projectRoot: paths.projectRoot,
+    pageKey: paths.pageKey,
+    primaryBreakpoint,
+    sourcePromptFile: promptFile,
   });
   const artifacts = await exportScreenArtifacts(edited, outdir, {
     mode: 'edit',
@@ -76,12 +90,11 @@ const result = await withKeyFallback(async (stitch) => {
     theme: args.theme || args['theme-name'] || null,
     preApprovalLockFile: args['pre-approval-lock-file'] || null,
     copyLockFile: args['copy-lock-file'] || null,
-    outputLockFile: args['output-lock-file'] || null,
-  }, viewport, { stateFile: selection.statePath || stateFile, pageKey: paths.pageKey, theme: args.theme || args['theme-name'] || null });
+  }, viewport, { stateFile: selection.statePath || stateFile, pageKey: paths.pageKey, theme: args.theme || args['theme-name'] || null, candidate: true, attemptOperation: 'edit', renderLocalDiagnostic: !['0', 'false', 'no'].includes(String(args['render-local-diagnostic'] || 'true').toLowerCase()) });
   const persisted = await persistProjectContext({
     stitch,
     projectId: selection.projectId,
-    outdir,
+    outdir: artifacts.candidateOutdir || outdir,
     stateFile,
     deviceType,
     screenId: edited.screenId || edited.id || null,
@@ -95,6 +108,7 @@ const result = await withKeyFallback(async (stitch) => {
   });
   await patchJson(artifacts.metaPath, {
     recovery,
+    earlyStatePath: earlyPersisted.statePath,
     statePath: persisted.statePath,
     designSystem: persisted.designSystem,
   });
@@ -106,6 +120,7 @@ const result = await withKeyFallback(async (stitch) => {
     inputScreenSource: selection.source,
     stateUpdate,
     recovery,
+    earlyStatePath: earlyPersisted.statePath,
     statePath: persisted.statePath,
     designSystem: persisted.designSystem,
     sessionIndexPath: persisted.sessionIndexPath,

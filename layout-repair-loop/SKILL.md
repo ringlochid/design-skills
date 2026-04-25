@@ -23,8 +23,9 @@ Enter only when:
 3. Patch candidate, not approved live artifact.
 4. Review candidate.
 5. If safe, run one candidate repair; review it.
-6. Optionally run one second candidate repair if the first review shows fixable layout-only debt.
-7. Promote only if review passes.
+6. Continue only while the issue remains layout-only and the repair budget remains.
+7. Stop after at most 3 local repair attempts.
+8. Promote only if review passes.
 
 ## Outcomes
 
@@ -37,15 +38,34 @@ Enter only when:
 
 Do not change product semantics, copy, information architecture, or page contract. Do not run repair before a valid target shell and `02-pages/<page>/responsive-plan.md` exist. If the contract is wrong, stop with `contract-fix-first`; if the breakpoint needs structural change, stop with `remap-required`. Patch candidates first; promote only after review passes.
 
+## Mutation model
+
+Repairs are candidate-first. A repair attempt creates a separate candidate artifact and review evidence. The approved artifact is not replaced until the candidate passes review and the operator explicitly promotes it. No silent in-place mutation.
+
 ## Simple repair sequence
 
-Do not use an owning loop script. The agent owns the loop:
+The agent owns a short bounded loop:
 
-1. `stitch_layout_diagnose.mjs`
-2. if `safeToAutoFix`, `stitch_layout_fix.mjs` in candidate mode
-3. `stitch_local_review.mjs` or diagnose the candidate
-4. repeat once only if the remaining issue is clearly layout-only
-5. manually promote the candidate only after review passes
+1. Diagnose the current artifact and classify the issue.
+2. If the issue is layout-only and safe to fix, patch a candidate rather than the approved artifact.
+3. Review the candidate with the screenshot triplet and lock checks.
+4. Repeat only if the remaining issue is clearly layout-only and fewer than 3 local repair attempts have been used.
+5. Promote only after review passes.
+
+## Phase-C loop logic
+
+Use `../design-repo-common/references/review-cycle.md`. Layout repair only handles layout-only defects on a real target shell; wrong structure returns `remap-required`, bad source/locks returns `contract-fix-first`.
+
+## Phase-C-style outcome summary
+
+Every repair attempt should end with one explicit outcome:
+
+- `clean` — screenshots, locks, and layout checks pass.
+- `remap-required` — the breakpoint needs structural redesign, not CSS repair.
+- `manual-polish-recommended` — only subjective/low-risk polish remains.
+- `contract-fix-first` — source truth, locks, or responsive plan is wrong/missing.
+
+Record the evidence used: Stitch screenshot, local viewport, local full-page, lock checks, and clutter/runtime placement check.
 
 ## Output shape
 
@@ -55,11 +75,13 @@ Do not use an owning loop script. The agent owns the loop:
 - Outcome
 - Promotion decision
 
-## Scripts
+## Internal helpers
 
-- `scripts/stitch_layout_diagnose.mjs`
-- `scripts/stitch_layout_fix.mjs`
-- `scripts/stitch_local_review.mjs`
+The workflow reports status and evidence: target artifact, candidate attempt, review result, outcome, and promotion decision.
+
+## Artifact hygiene
+
+Use `../design-repo-common/references/artifact-hygiene.md`. In short: human-readable HTML/MD/screenshots stay in the page root; JSON/state/logs/diagnostics/backups stay under `runtime/`.
 
 ## Shared rules
 
