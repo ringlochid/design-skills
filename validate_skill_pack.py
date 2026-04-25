@@ -59,7 +59,7 @@ if smoke.exists():
         errs.append(f'{smoke}: runtime smoke failed: {res.stderr.strip() or res.stdout.strip()}')
 
 
-allowed_legacy = {'PATCH_PLAN.md','REVIEW_NOTES_LOCAL.md','design-repo-common/references/legacy-design-flow-migration.md','validate_skill_pack.py','stitch-adapter/scripts/stitch_common.mjs'}
+allowed_legacy = {'PATCH_PLAN.md','REVIEW_NOTES_LOCAL.md','design-repo-common/references/legacy-design-flow-migration.md','validate_skill_pack.py'}
 legacy_tokens = ['00-meta', '03-pages', 'exports/stitch']
 for fp in sorted(root.rglob('*')):
     if not fp.is_file() or '.git' in fp.parts: continue

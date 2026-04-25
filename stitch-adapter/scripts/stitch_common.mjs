@@ -69,14 +69,10 @@ export async function discoverDesignProjectRoot({ projectRoot = null, configFile
     }
     while (true) {
       const v2ConfigPath = path.join(current, '00-product', 'design-config.json');
-      const legacyConfigPath = path.join(current, '00-meta', 'design-config.json');
       const v2BriefPath = path.join(current, '00-product', 'brief.md');
       const v2SystemPath = path.join(current, '01-system', 'DESIGN.md');
-      const roadmapPath = path.join(current, 'ROADMAP.md');
       if (await pathExists(v2ConfigPath)) return current;
       if (await pathExists(v2BriefPath) || await pathExists(v2SystemPath)) return current;
-      if (await pathExists(legacyConfigPath)) return current;
-      if (await pathExists(roadmapPath)) return current;
       const parent = path.dirname(current);
       if (parent === current) break;
       current = parent;
@@ -679,19 +675,9 @@ function findLikelyStitchRoot(targetPath) {
   for (let i = 0; i < parts.length - 1; i += 1) {
     const part = parts[i];
     const next = parts[i + 1];
-    // legacy path: design-work/stitch
-    if (part === 'design-work' && next === 'stitch') {
-      return `${path.sep}${path.join(...parts.slice(0, i + 2))}`;
-    }
-    // v2 repo structure: .../04-generated/stitch/<page>/<breakpoint>
-    if (part === 'stitch' && parts[i - 1] === 'exports') {
-      return `${path.sep}${path.join(...parts.slice(0, i + 1))}`;
-    }
+    // v2 repo structure only: .../04-generated/stitch/<page>/<breakpoint>
     if (part === 'stitch' && parts[i - 1] === '04-generated' && parts[i + 1]) {
       return `${path.sep}${path.join(...parts.slice(0, i + 2))}`;
-    }
-    if (part === 'stitch') {
-      return `${path.sep}${path.join(...parts.slice(0, i + 1))}`;
     }
   }
   return null;
