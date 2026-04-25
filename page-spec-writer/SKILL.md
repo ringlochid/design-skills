@@ -24,3 +24,7 @@ Goal: define what a page must communicate and support before any generation tool
 ## Stop boundary
 
 Do not generate UI or write tool-specific prompts. Hand off to `design-system-writer` or `generation-pack-builder`.
+
+## Output shape
+
+For page spec structure, use `references/page-spec-template.md`.

@@ -15,7 +15,7 @@ Review the screenshot triplet together: Stitch canvas/API screenshot, full-acces
 
 1. Read source truth and generated artifact paths.
 2. Inspect visual/runtime evidence.
-3. Check product fit, hierarchy, content, design-system consistency, responsive readiness, a11y basics, and implementation feasibility.
+3. Check product fit, hierarchy, content, design-system consistency, responsive readiness, a11y basics, and implementation feasibility. For non-primary breakpoints, use `../design-repo-common/references/responsive-remap-quality.md` when judging sparse, cramped, or invented remaps.
 4. Write review under `05-review/`.
 5. Return verdict.
 
@@ -25,7 +25,7 @@ Every non-accept review must classify the next action:
 
 - `source-contract` — source truth, locks, copy, title, or product framing is wrong.
 - `local-layout` — exported HTML has fixable overflow, spacing, density, safe-area, or fixed-nav issues.
-- `responsive-remap` — breakpoint structure is wrong and needs a remap/regeneration prompt.
+- `responsive-remap` — breakpoint structure, density, canvas use, or framing is wrong and needs a remap/regeneration prompt.
 - `generation-quality` — visual quality is weak enough to regenerate.
 - `manual-polish` — subjective polish remains but core quality is usable.
 
@@ -58,6 +58,8 @@ Do not patch layout here. Hand off to source-writing, generation, responsive, or
 
 ## Output shape
 
+For a compact rubric checklist, use `references/review-rubric.md`.
+
 - Artifact reviewed
 - Evidence used
 - Findings
@@ -69,3 +71,7 @@ Do not patch layout here. Hand off to source-writing, generation, responsive, or
 ## Shared rules
 
 When promoting, generating, reviewing, repairing, or handing off artifacts, use `../design-repo-common/references/source-truth-rules.md`; use `../design-repo-common/references/tool-policy.md` for web/browser/image-generation placement.
+
+## Subagents
+
+When using subagents, follow `../design-repo-common/references/subagent-policy.md`.

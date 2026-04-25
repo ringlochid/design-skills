@@ -33,3 +33,7 @@ Use available source inventory, product docs, backend capabilities, architecture
 ## Stop boundary
 
 Do not write page layout or tool prompt packs here. Hand off to `page-spec-writer`.
+
+## Output shape
+
+For brief structure, use `references/product-brief-template.md`.

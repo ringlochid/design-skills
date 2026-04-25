@@ -9,7 +9,7 @@ Map old artifacts into the v2 design repo layout deliberately; do not delete old
 | `00-meta/copy-pack.md` | `02-pages/<page>/content.md` or `00-product/workflows.md` |
 | `00-meta/design-system/base/DESIGN.md` | `01-system/DESIGN.md` |
 | `00-meta/design-system/themes/*.md` | `01-system/themes/*.md` |
-| `00-meta/runtime/stitch-project.json` | `04-generated/stitch/project.json` |
+| `00-meta/runtime/stitch-project.json` | `04-generated/stitch/<page>/runtime/project.json` |
 | `03-pages/<page>/brief.md` | `02-pages/<page>/spec.md` |
 | `03-pages/<page>/content.md` | `02-pages/<page>/content.md` |
 | `03-pages/<page>/notes.md` | `02-pages/<page>/notes.md` |

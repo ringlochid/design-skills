@@ -12,20 +12,31 @@ function workspaceRoot() {
 export async function loadStitchSdk() {
   try {
     return await import('@google/stitch-sdk');
-  } catch {
+  } catch (nativeError) {
     const candidates = [];
-    if (process.env.STITCH_SDK_NODE_MODULES) {
-      candidates.push(path.join(process.env.STITCH_SDK_NODE_MODULES, '@google/stitch-sdk/dist/src/index.js'));
+    const configured = process.env.STITCH_SDK_NODE_MODULES;
+    if (configured) {
+      candidates.push(path.join(configured, '@google/stitch-sdk/dist/src/index.js'));
+      candidates.push(path.join(configured, 'node_modules/@google/stitch-sdk/dist/src/index.js'));
+      candidates.push(path.join(configured, 'dist/src/index.js'));
     }
     candidates.push(path.join(workspaceRoot(), 'tmp/stitch-sdk-exp/node_modules/@google/stitch-sdk/dist/src/index.js'));
+    const attempted = [];
     for (const candidate of candidates) {
+      attempted.push(candidate);
       try {
         return await import(pathToFileURL(candidate).href);
       } catch {
         // try next
       }
     }
-    throw new Error('Unable to load @google/stitch-sdk. Install it or set STITCH_SDK_NODE_MODULES.');
+    throw new Error([
+      'Unable to load @google/stitch-sdk.',
+      'Install it in the active runtime or set STITCH_SDK_NODE_MODULES to a node_modules directory containing @google/stitch-sdk.',
+      'Example: npm install --prefix /tmp/design-skills-deps @google/stitch-sdk@0.1.0 && export STITCH_SDK_NODE_MODULES=/tmp/design-skills-deps/node_modules',
+      `Native import error: ${nativeError?.message || nativeError}`,
+      attempted.length ? `Attempted fallback paths: ${attempted.join(', ')}` : null,
+    ].filter(Boolean).join(' '));
   }
 }
 

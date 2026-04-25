@@ -2,9 +2,20 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
-import { parseArgs, ensureDir, writeJson } from './stitch_common.mjs';
+import { parseArgs, ensureDir, writeJson } from '../../stitch-adapter/scripts/stitch_common.mjs';
 
 const args = parseArgs(process.argv);
+
+function printHelp() {
+  console.log(`usage: design_repo_bootstrap_project.mjs --project-root <dir> --product-name <product-facing name> [--primary-breakpoint mobile|desktop]
+
+Creates the design repo skeleton. Requires a concrete product-facing name; refuses temp/test/smoke/demo names.`);
+}
+
+if (args.help || args.h) {
+  printHelp();
+  process.exit(0);
+}
 
 function humanizeSlug(value) {
   return String(value || '')

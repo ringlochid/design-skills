@@ -72,4 +72,8 @@ When promoting, generating, reviewing, repairing, or handing off artifacts, use 
 
 ## Acceptance state
 
-Before handoff, require the accepted artifact, latest review, runtime meta, and `runtime/state.json` `approved[breakpoint]` entry to refer to the same promoted artifact/screen lineage. Do not close over an unpromoted candidate unless the handoff explicitly says manual-review exception.
+Before handoff, require the accepted artifact, latest review, runtime meta, lifecycle event, and `runtime/state.json` `approved[breakpoint]` entry to refer to the same promoted artifact/screen lineage. Run `design-repo-common/scripts/check_design_repo.mjs` with `--stage=handoff` for every accepted breakpoint. Do not close over an unpromoted candidate.
+
+## Output shape
+
+For the minimal handoff structure, use `references/handoff-template.md`.

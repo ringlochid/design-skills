@@ -7,22 +7,19 @@ description: Generate and compare divergent product/visual design directions bef
 
 Goal: create useful alternatives, not a final source of truth.
 
-## Good use of subagents
+## Subagent use
 
-Use 2–4 bounded subagents when distinct perspectives would help, for example:
+Default: parent agent brainstorms alone.
 
-- conservative/productive SaaS
-- bold/editorial brand
-- data-dense technical dashboard
-- playful/consumer onboarding
-
-Parent agent synthesizes; subagents do not write final source truth.
+Use 1-2 bounded subagents when direction is ambiguous or quality matters. Use 3-4 only when the user explicitly asks for broad exploration or the project is unusually high-value/broad. Subagents return options, tradeoffs, and reference directions only; parent selects and synthesizes.
 
 ## Image generation
 
 Optional: generate moodboards or hero/reference concepts when visual ambiguity is high. Store outputs under `03-references/generated-assets/` or `04-generated/images/`.
 
 ## Output shape
+
+For option formatting, use `references/direction-options-template.md`.
 
 - Direction options
 - Pros/cons
@@ -36,3 +33,4 @@ Do not merge all ideas. Pick or recommend a direction.
 ## Asset boundary
 
 This skill owns concept options. Delegate concrete image file generation to `visual-asset-generator`.
+

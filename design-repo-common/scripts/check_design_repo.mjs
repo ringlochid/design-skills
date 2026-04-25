@@ -30,12 +30,18 @@ function acceptedReviewText(text) {
   return /promotion_eligible\s*:\s*true/i.test(text) || /verdict\s*:\s*\*?\*?(accept|accepted|pass)\b/i.test(text);
 }
 function handoffCandidates(pageKey) { return [`06-handoff/${pageKey}-handoff.md`, `06-handoff/${pageKey}.md`].filter(exists); }
-function requireAcceptedReview(pageKey) {
+function requireAcceptedReview(pageKey, breakpointName = null) {
   const reviewRel = `05-review/${pageKey}-review.md`;
   requirePath(reviewRel);
   if (exists(reviewRel)) {
     const text = fs.readFileSync(path.join(root, reviewRel), 'utf8');
     if (!acceptedReviewText(text)) { console.log(`REVIEW_NOT_ACCEPTED ${reviewRel}`); ok = false; }
+    if (breakpointName) {
+      const state = readJson(`04-generated/stitch/${pageKey}/runtime/state.json`);
+      const candidateDir = state?.approved?.[breakpointName]?.candidateDir;
+      const relCandidate = candidateDir ? path.relative(root, path.resolve(candidateDir)).replaceAll('\\', '/') : null;
+      if (candidateDir && !text.includes(candidateDir) && !text.includes(relCandidate)) { console.log(`REVIEW_CANDIDATE_LINK_MISSING ${reviewRel}`); ok = false; }
+    }
   }
 }
 function requireHandoffLinks(pageKey, breakpointName) {
@@ -63,9 +69,22 @@ function validateMetaAndState(pageKey, breakpointName, requireApproved = false) 
   if (meta.renderedPreview && meta.renderedPreview.networkAccess !== 'full') {
     console.log(`META_LOCAL_RENDER_NOT_FULL_NETWORK ${metaRel}`); ok = false;
   }
-  for (const [key, suffix] of Object.entries({ htmlPath: '.html', imagePath: '.png', localImagePath: '.local.png', localFullImagePath: '.local.full.png' })) {
-    const value = key === 'htmlPath' ? meta.htmlPath : (key === 'imagePath' ? (meta.stitchCanvasScreenshot?.imagePath || meta.screenshotFallback?.imagePath || meta.imagePath) : meta.localHtmlRender?.[key === 'localImagePath' ? 'imagePath' : 'fullImagePath']);
-    if (value && !String(value).endsWith(`${breakpointName}${suffix}`)) { console.log(`META_TRIPLET_MISMATCH ${key} ${value}`); ok = false; }
+  const expectedRoot = path.join(root, '04-generated/stitch', pageKey);
+  const expectedPaths = {
+    htmlPath: path.join(expectedRoot, `${breakpointName}.html`),
+    imagePath: path.join(expectedRoot, `${breakpointName}.png`),
+    localImagePath: path.join(expectedRoot, `${breakpointName}.local.png`),
+    localFullImagePath: path.join(expectedRoot, `${breakpointName}.local.full.png`),
+  };
+  const actualPaths = {
+    htmlPath: meta.htmlPath,
+    imagePath: meta.stitchCanvasScreenshot?.imagePath || meta.screenshotFallback?.imagePath || meta.imagePath,
+    localImagePath: meta.localHtmlRender?.imagePath,
+    localFullImagePath: meta.localHtmlRender?.fullImagePath,
+  };
+  for (const [key, expected] of Object.entries(expectedPaths)) {
+    const value = actualPaths[key];
+    if (value && path.resolve(value) !== expected) { console.log(`META_TRIPLET_MISMATCH ${key} ${value}`); ok = false; }
   }
   const state = readJson(`04-generated/stitch/${pageKey}/runtime/state.json`);
   if (!state) { console.log(`BAD_STATE_JSON 04-generated/stitch/${pageKey}/runtime/state.json`); ok = false; return; }
@@ -81,8 +100,24 @@ function validateMetaAndState(pageKey, breakpointName, requireApproved = false) 
     if ((approved.projectId || null) !== (meta.projectId || state.projectId || null)) { console.log(`STATE_APPROVED_PROJECT_MISMATCH ${pageKey}/${breakpointName}`); ok = false; }
     if (!approved.reviewFile || !exists(path.relative(root, path.resolve(approved.reviewFile)))) { console.log(`STATE_APPROVED_REVIEW_MISSING ${pageKey}/${breakpointName}`); ok = false; }
     const lifecycle = readJson(`04-generated/stitch/${pageKey}/runtime/lifecycle.json`);
-    const event = lifecycle?.events?.find((item) => item.state === 'accepted-promoted' && item.breakpoint === breakpointName && (item.screenId || null) === (approved.screenId || null));
+    if (meta.lifecycleState !== 'accepted-promoted') { console.log(`META_LIFECYCLE_NOT_PROMOTED ${metaRel}`); ok = false; }
+    const events = Array.isArray(lifecycle?.events) ? lifecycle.events : [];
+    const relevantEvents = events
+      .filter((item) => item.state === 'accepted-promoted' && item.breakpoint === breakpointName && (item.screenId || null) === (approved.screenId || null))
+      .reverse();
+    const exactEvent = relevantEvents.find((item) => {
+      const metaMatches = !item.metaPath || path.resolve(item.metaPath) === path.join(root, metaRel);
+      const reviewMatches = !item.reviewFile || path.resolve(item.reviewFile) === path.resolve(approved.reviewFile);
+      const candidateMatches = !item.candidateDir || !approved.candidateDir || path.resolve(item.candidateDir) === path.resolve(approved.candidateDir);
+      return metaMatches && reviewMatches && candidateMatches;
+    });
+    const event = exactEvent || relevantEvents[0] || null;
     if (!event) { console.log(`LIFECYCLE_ACCEPTED_PROMOTED_MISSING ${pageKey}/${breakpointName}`); ok = false; }
+    else {
+      if (event.metaPath && path.resolve(event.metaPath) !== path.join(root, metaRel)) { console.log(`LIFECYCLE_META_MISMATCH ${pageKey}/${breakpointName}`); ok = false; }
+      if (event.reviewFile && path.resolve(event.reviewFile) !== path.resolve(approved.reviewFile)) { console.log(`LIFECYCLE_REVIEW_MISMATCH ${pageKey}/${breakpointName}`); ok = false; }
+      if (event.candidateDir && approved.candidateDir && path.resolve(event.candidateDir) !== path.resolve(approved.candidateDir)) { console.log(`LIFECYCLE_CANDIDATE_MISMATCH ${pageKey}/${breakpointName}`); ok = false; }
+    }
   }
 }
 
@@ -147,7 +182,7 @@ if (stage === 'repair' || stage === 'handoff') {
 }
 if (stage === 'handoff') {
   if (page) {
-    requireAcceptedReview(page);
+    requireAcceptedReview(page, breakpoint);
     requireHandoffLinks(page, breakpoint);
   }
 }

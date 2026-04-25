@@ -30,13 +30,13 @@ Enter only when:
 ## Outcomes
 
 - `clean`
-- `remap-required`
+- `needs-remap`
 - `manual-polish-recommended`
-- `contract-fix-first`
+- `needs-source`
 
 ## Stop boundary
 
-Do not change product semantics, copy, information architecture, or page contract. Do not run repair before a valid target shell and `02-pages/<page>/responsive-plan.md` exist. If the contract is wrong, stop with `contract-fix-first`; if the breakpoint needs structural change, stop with `remap-required`. Patch candidates first; promote only after review passes.
+Do not change product semantics, copy, information architecture, or page contract. Do not run repair before a valid target shell and `02-pages/<page>/responsive-plan.md` exist. If the contract is wrong, stop with `needs-source`; if the breakpoint needs structural change, stop with `needs-remap`. Patch candidates first; promote only after review passes.
 
 ## Mutation model
 
@@ -54,16 +54,16 @@ The agent owns a short bounded loop:
 
 ## Phase-C loop logic
 
-Use `../design-repo-common/references/review-cycle.md`. Layout repair only handles layout-only defects on a real target shell; wrong structure returns `remap-required`, bad source/locks returns `contract-fix-first`.
+Use `../design-repo-common/references/review-cycle.md`. Layout repair only handles layout-only defects on a real target shell; wrong structure returns `needs-remap`, bad source/locks returns `needs-source`.
 
 ## Phase-C-style outcome summary
 
 Every repair attempt should end with one explicit outcome:
 
 - `clean` — screenshots, locks, and layout checks pass.
-- `remap-required` — the breakpoint needs structural redesign, not CSS repair.
+- `needs-remap` — the breakpoint needs structural redesign, not CSS repair.
 - `manual-polish-recommended` — only subjective/low-risk polish remains.
-- `contract-fix-first` — source truth, locks, or responsive plan is wrong/missing.
+- `needs-source` — source truth, locks, or responsive plan is wrong/missing.
 
 Record the evidence used: Stitch screenshot, local viewport, local full-page, lock checks, and clutter/runtime placement check.
 

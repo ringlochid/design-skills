@@ -17,6 +17,8 @@ Goal: extract UI-relevant backend capabilities without letting existing endpoint
 
 ## Output shape
 
+For a compact mapping checklist, use `references/api-to-ui-state-map.md`.
+
 - Capabilities
 - Entities/data shape
 - User actions

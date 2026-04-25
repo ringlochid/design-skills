@@ -264,6 +264,42 @@ export async function saveProjectRuntime(runtimePath, runtime) {
   });
 }
 
+async function refreshRepoStatusIfPossible(config, repoStatusPath) {
+  if (!config?.projectRoot || !repoStatusPath) return null;
+  const requiredDirs = ['00-product', '01-system', '02-pages', '03-references', '04-generated', '05-review', '06-handoff'];
+  const requiredFiles = ['00-product/brief.md', '01-system/DESIGN.md', '00-product/design-policy.md', '00-product/source-inventory.md'];
+  const status = {
+    projectRoot: config.projectRoot,
+    missingDirs: [],
+    missingFiles: [],
+    ready: false,
+    designWorkspaceSignals: { designWorkspaceReady: true },
+    checkedAt: new Date().toISOString(),
+    refreshedBy: 'assertPhaseZeroReady',
+  };
+  for (const rel of requiredDirs) {
+    const target = path.join(config.projectRoot, rel);
+    try {
+      const stat = await fs.stat(target);
+      if (!stat.isDirectory()) status.missingDirs.push(rel);
+    } catch {
+      status.missingDirs.push(rel);
+    }
+  }
+  for (const rel of requiredFiles) {
+    const target = path.join(config.projectRoot, rel);
+    try {
+      const text = await fs.readFile(target, 'utf8');
+      if (!text.trim() || /\bTODO\b/i.test(text) || /Draft required before generation/i.test(text)) status.missingFiles.push(rel);
+    } catch {
+      status.missingFiles.push(rel);
+    }
+  }
+  status.ready = status.missingDirs.length === 0 && status.missingFiles.length === 0;
+  if (status.ready) await writeJson(repoStatusPath, status);
+  return status;
+}
+
 export async function assertPhaseZeroReady({ projectRoot = null, configFile = null, startPath = null, requireRepoContext = true } = {}) {
   const config = await loadDesignProjectConfig({ projectRoot, configFile, startPath });
   if (!config.projectRoot) {
@@ -282,7 +318,11 @@ export async function assertPhaseZeroReady({ projectRoot = null, configFile = nu
     if (!repoContextPath || !await pathExists(repoContextPath)) warnings.push(repoContextPath || '00-product/source-inventory.md');
   }
 
-  const repoStatus = repoStatusPath ? await readJsonIfExists(repoStatusPath, null) : null;
+  let repoStatus = repoStatusPath ? await readJsonIfExists(repoStatusPath, null) : null;
+  if (requireRepoContext && repoStatus && repoStatus.ready !== true) {
+    const refreshed = await refreshRepoStatusIfPossible(config, repoStatusPath);
+    if (refreshed?.ready === true) repoStatus = refreshed;
+  }
   if (requireRepoContext && repoStatus && repoStatus.ready !== true) {
     const missing = [
       ...(repoStatus.missingDirs || []),
@@ -863,7 +903,7 @@ function buildLockMarkdown({
     '- Footer links:',
     ...uniqueLockValues(footerLinks).map((item) => `  - ${item}`),
     '',
-    '## Required nouns',
+    '## Required visible labels',
     ...uniqueLockValues(requiredNouns).map((item) => `- ${item}`),
     '',
     '## Banned drift words',
@@ -948,7 +988,7 @@ function parseCopyLockMarkdown(markdown) {
       continue;
     }
 
-    if (currentSection === 'required nouns' && bulletMatch) {
+    if ((currentSection === 'required nouns' || currentSection === 'required visible labels') && bulletMatch) {
       pushCopyLockListValue(result.requiredNouns, bulletMatch[1]);
       continue;
     }
@@ -1808,11 +1848,16 @@ export async function reviewLocalHtmlArtifacts({ htmlPath, outdir, meta = {}, vi
 }
 
 export async function diagnoseLocalHtmlLayout({ htmlPath, outdir, deviceType = 'DESKTOP', stateFile = null, preApprovalLockFile = null, copyLockFile = null, responsiveMapFile = null, sourceLabel = 'layout-diagnose', viewport = defaultViewportForDeviceType(deviceType), localPatchApplied = false, localPatchStrategy = null, derivedFromScreenId = null, pageKey = null, theme = null } = {}) {
-  const diagnosticsDir = path.join(runtimeDirForOutdir(outdir), 'diagnostics');
+  const canonicalOutdir = path.resolve(outdir);
+  const candidateAttemptDir = attemptDirForHtml(canonicalOutdir, htmlPath);
+  const diagnosticOutdir = candidateAttemptDir || canonicalOutdir;
+  const diagnosticsDir = path.join(runtimeDirForOutdir(diagnosticOutdir), 'diagnostics');
   await ensureDir(diagnosticsDir);
+  const effectivePreApprovalLockFile = preApprovalLockFile || defaultLockFile(canonicalOutdir, 'pre-approval-lock.md');
+  const effectiveCopyLockFile = copyLockFile || defaultLockFile(canonicalOutdir, 'copy-lock.md');
   const artifacts = await reviewLocalHtmlArtifacts({
     htmlPath,
-    outdir,
+    outdir: diagnosticOutdir,
     meta: {
       mode: 'layout-diagnose',
       sourceLabel,
@@ -1827,8 +1872,8 @@ export async function diagnoseLocalHtmlLayout({ htmlPath, outdir, deviceType = '
       stateFile,
       pageKey,
       theme,
-      preApprovalLockFile,
-      copyLockFile,
+      preApprovalLockFile: effectivePreApprovalLockFile,
+      copyLockFile: effectiveCopyLockFile,
       localPatchApplied,
       localPatchStrategy,
       derivedFromScreenId,
@@ -1851,7 +1896,7 @@ export async function diagnoseLocalHtmlLayout({ htmlPath, outdir, deviceType = '
     copyLockCheck: meta.copyLockCheck || null,
     responsiveMapText,
   });
-  const diagnosticsStem = artifactStemForOutdir(outdir, { deviceType, breakpoint: breakpointForDeviceType(deviceType), pageKey, theme }, { stateFile, pageKey, theme });
+  const diagnosticsStem = artifactStemForOutdir(canonicalOutdir, { deviceType, breakpoint: breakpointForDeviceType(deviceType), pageKey, theme }, { stateFile, pageKey, theme });
   const diagnosticsPath = path.join(diagnosticsDir, `${diagnosticsStem}.layout-diagnostics.json`);
   await writeJson(diagnosticsPath, diagnostics);
   await patchJson(artifacts.metaPath, {
@@ -1865,6 +1910,23 @@ export async function diagnoseLocalHtmlLayout({ htmlPath, outdir, deviceType = '
   };
 }
 
+
+function pathWithin(parent, child) {
+  const rel = path.relative(path.resolve(parent), path.resolve(child));
+  return rel && !rel.startsWith('..') && !path.isAbsolute(rel);
+}
+
+function attemptDirForHtml(canonicalOutdir, htmlPath) {
+  const attemptsRoot = path.join(path.resolve(canonicalOutdir), 'attempts');
+  const resolvedHtml = path.resolve(htmlPath);
+  if (!pathWithin(attemptsRoot, resolvedHtml)) return null;
+  const rel = path.relative(attemptsRoot, resolvedHtml).split(path.sep);
+  return rel[0] ? path.join(attemptsRoot, rel[0]) : null;
+}
+
+function defaultLockFile(canonicalOutdir, name) {
+  return path.join(path.resolve(canonicalOutdir), 'locks', name);
+}
 
 function normalizeStitchImageResult(value) {
   if (!value) return null;
@@ -1901,10 +1963,15 @@ export async function exportScreenArtifacts(screen, outdir, meta = {}, viewport 
   await fetchToFile(htmlUrl, htmlPath);
   const metaPath = metaPathForOutdir(targetOutdir, stem);
   await ensureDir(path.dirname(metaPath));
+  const outputScreenId = screen.screenId || screen.id || null;
+  const sourceStitchScreenId = meta.sourceStitchScreenId || meta.inputScreenId || null;
+  const derivedFromScreenId = meta.derivedFromScreenId || meta.inputScreenId || null;
   await patchJson(metaPath, {
     ...meta,
     htmlUrl,
-    outputScreenId: screen.screenId || screen.id || null,
+    outputScreenId,
+    sourceStitchScreenId,
+    derivedFromScreenId,
     exportedAt: new Date().toISOString(),
     canonicalOutdir,
     candidateOutdir: targetOutdir !== canonicalOutdir ? targetOutdir : null,
@@ -1921,7 +1988,9 @@ export async function exportScreenArtifacts(screen, outdir, meta = {}, viewport 
       meta: {
         ...meta,
         htmlUrl,
-        outputScreenId: screen.screenId || screen.id || null,
+        outputScreenId,
+        sourceStitchScreenId,
+        derivedFromScreenId,
         exportedAt: new Date().toISOString(),
       },
       viewport,
@@ -1938,23 +2007,27 @@ export async function exportScreenArtifacts(screen, outdir, meta = {}, viewport 
     };
   }
 
+  let postExportRequiredNounCheck = null;
   if (localHtmlRender) {
     const checkedMeta = await readJsonIfExists(metaPath, {});
     const requiredNounMisses = [
       ...hardRequiredNounMisses(checkedMeta.preApprovalLockCheck),
       ...hardRequiredNounMisses(checkedMeta.copyLockCheck),
     ];
-    const postExportRequiredNounCheck = {
+    postExportRequiredNounCheck = {
       passed: requiredNounMisses.length === 0,
       hardMissing: requiredNounMisses,
       checkedAt: new Date().toISOString(),
       evidence: 'full-access local HTML render and exported HTML lock checks',
     };
     await patchJson(metaPath, { postExportRequiredNounCheck });
-    if (!postExportRequiredNounCheck.passed) {
-      throw new Error(`Post-export required noun check failed: ${requiredNounMisses.map((item) => item.expected || item.kind).join(', ')}`);
-    }
   }
+
+  const throwPostExportIfFailed = () => {
+    if (postExportRequiredNounCheck && !postExportRequiredNounCheck.passed) {
+      throw new Error(`Post-export required visible label check failed: ${postExportRequiredNounCheck.hardMissing.map((item) => item.expected || item.kind).join(', ')}`);
+    }
+  };
 
   const stitchImageUrl = await stitchCanvasImageUrlForScreen(screen);
   if (!stitchImageUrl) {
@@ -1972,6 +2045,7 @@ export async function exportScreenArtifacts(screen, outdir, meta = {}, viewport 
       },
       localHtmlRender,
     });
+    throwPostExportIfFailed();
     return {
       htmlPath,
       imagePath: localHtmlRender?.imagePath ? fallbackImagePath : null,
@@ -1999,6 +2073,7 @@ export async function exportScreenArtifacts(screen, outdir, meta = {}, viewport 
     },
     localHtmlRender,
   });
+  throwPostExportIfFailed();
   return {
     htmlPath,
     imagePath: canvasImagePath,

@@ -29,6 +29,8 @@ Do not search for private/internal products unless asked.
 
 ## Output shape
 
+For research note structure, use `references/reference-research-template.md`.
+
 - References checked
 - Relevant patterns
 - Anti-patterns

@@ -38,6 +38,46 @@ async function writeJson(file, payload) {
 function acceptedReview(text) {
   return /promotion_eligible\s*:\s*true/i.test(text) || /verdict\s*:\s*\*?\*?(accept|accepted|pass)\b/i.test(text);
 }
+function reviewReferencesCandidate(text, { candidateDir, projectRoot, breakpoint, htmlPath }) {
+  const normalized = String(text || '');
+  const relCandidate = path.relative(projectRoot, candidateDir).replaceAll('\\', '/');
+  const relHtml = path.relative(projectRoot, htmlPath).replaceAll('\\', '/');
+  return normalized.includes(candidateDir)
+    || normalized.includes(relCandidate)
+    || normalized.includes(htmlPath)
+    || normalized.includes(relHtml)
+    || (/candidate(_dir| dir| path)?\s*:/i.test(normalized) && normalized.includes(breakpoint));
+}
+function rewritePromotedMetaPaths(meta, { pageRoot, breakpoint, candidateDir, promotedAt }) {
+  const rootHtml = path.join(pageRoot, `${breakpoint}.html`);
+  const rootScreenshot = path.join(pageRoot, `${breakpoint}.png`);
+  const rootLocal = path.join(pageRoot, `${breakpoint}.local.png`);
+  const rootFull = path.join(pageRoot, `${breakpoint}.local.full.png`);
+  const promoted = {
+    ...meta,
+    lifecycleState: 'accepted-promoted',
+    promotedFromCandidateDir: candidateDir,
+    promotedAt,
+    canonicalOutdir: pageRoot,
+    candidateOutdir: meta.candidateOutdir || candidateDir,
+    htmlPath: rootHtml,
+    imagePath: rootScreenshot,
+    promotedRootTriplet: {
+      screenshot: rootScreenshot,
+      localViewport: rootLocal,
+      localFullPage: rootFull,
+    },
+  };
+  if (promoted.stitchCanvasScreenshot) promoted.stitchCanvasScreenshot = { ...promoted.stitchCanvasScreenshot, imagePath: rootScreenshot };
+  if (promoted.screenshotFallback) promoted.screenshotFallback = { ...promoted.screenshotFallback, imagePath: rootScreenshot };
+  promoted.localHtmlRender = {
+    ...(promoted.localHtmlRender || {}),
+    imagePath: rootLocal,
+    fullImagePath: rootFull,
+    source: promoted.localHtmlRender?.source || 'full-access-local-html-render',
+  };
+  return promoted;
+}
 function checkPassed(check) {
   return Boolean(check)
     && check.passed !== false
@@ -92,6 +132,10 @@ if (!acceptedReview(reviewText)) {
   console.log(`REVIEW_NOT_ACCEPTED ${reviewFile}`);
   process.exit(1);
 }
+if (!reviewReferencesCandidate(reviewText, { candidateDir, projectRoot, breakpoint, htmlPath: path.join(candidateDir, `${breakpoint}.html`) })) {
+  console.log(`REVIEW_DOES_NOT_REFERENCE_CANDIDATE ${reviewFile}`);
+  process.exit(1);
+}
 const meta = await readJson(metaPath, {});
 if (!hardLocksPass(meta)) {
   console.log(`LOCKS_NOT_PROMOTION_ELIGIBLE ${metaPath}`);
@@ -124,26 +168,29 @@ if (!ok) process.exit(1);
 const stamp = new Date().toISOString().replace(/[:.]/g, '-');
 const archiveDir = path.join(runtimeRoot, 'archive', `${breakpoint}-${stamp}`);
 await ensureDir(archiveDir);
+const archived = [];
 for (const name of [...required, `${breakpoint}.prompt.md`]) {
   const dest = path.join(pageRoot, name);
-  if (await exists(dest)) await fs.copyFile(dest, path.join(archiveDir, name));
+  if (await exists(dest)) { await fs.copyFile(dest, path.join(archiveDir, name)); archived.push(name); }
   if (await exists(path.join(candidateDir, name))) await fs.copyFile(path.join(candidateDir, name), dest);
 }
 await ensureDir(runtimeRoot);
+for (const name of [`${breakpoint}.meta.json`, 'state.json', 'lifecycle.json']) {
+  const file = path.join(runtimeRoot, name);
+  if (await exists(file)) { await fs.copyFile(file, path.join(archiveDir, name)); archived.push(`runtime/${name}`); }
+}
 const promotedMetaPath = path.join(runtimeRoot, `${breakpoint}.meta.json`);
-const promotedMeta = {
-  ...meta,
-  lifecycleState: 'accepted-promoted',
-  promotedFromCandidateDir: candidateDir,
-  promotedAt: new Date().toISOString(),
-  htmlPath: path.join(pageRoot, `${breakpoint}.html`),
-  promotedRootTriplet: {
-    screenshot: path.join(pageRoot, `${breakpoint}.png`),
-    localViewport: path.join(pageRoot, `${breakpoint}.local.png`),
-    localFullPage: path.join(pageRoot, `${breakpoint}.local.full.png`),
-  },
-};
+const promotedAt = new Date().toISOString();
+const promotedMeta = rewritePromotedMetaPaths(meta, { pageRoot, breakpoint, candidateDir, promotedAt });
 await writeJson(promotedMetaPath, promotedMeta);
+await writeJson(path.join(archiveDir, 'manifest.json'), {
+  archived,
+  page,
+  breakpoint,
+  candidateDir,
+  promotedAt,
+  restoredBy: 'manual-copy-from-archive',
+});
 const statePath = path.join(runtimeRoot, 'state.json');
 const state = await readJson(statePath, { current: {}, approved: {} });
 state.projectId = promotedMeta.projectId || state.projectId || null;

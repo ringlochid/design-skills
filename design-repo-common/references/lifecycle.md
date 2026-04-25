@@ -12,4 +12,4 @@ Use one lifecycle vocabulary across full design runs and existing-artifact patch
 - `accepted-promoted` — reviewed candidate has been promoted to accepted root artifacts.
 - `blocked` — missing dependency, approval, source, or artifact prevents progress.
 
-Closure rule: handoff can close only over `accepted-promoted` artifacts or an explicitly documented manual-review exception.
+Closure rule: handoff closes only over `accepted-promoted` artifacts. Manual review can stop work, but it is not a final handoff state.

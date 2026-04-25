@@ -89,10 +89,11 @@ Important rule: generated candidates are not accepted artifacts. Stitch generate
 
 Key shared files:
 
-- `references/fix-lanes.md` — canonical fix lanes used by full workflow and patch workflow.
-- `references/lifecycle.md` — canonical lifecycle states.
-- `references/review-cycle.md` — bounded review/repair/remap loop.
-- `references/artifact-hygiene.md` — where human-facing vs runtime artifacts belong.
+- `design-repo-common/references/fix-lanes.md` — canonical fix lanes used by full workflow and patch workflow.
+- `design-repo-common/references/lifecycle.md` — canonical lifecycle states.
+- `design-repo-common/references/review-cycle.md` — bounded review/repair/remap loop.
+- `design-repo-common/references/responsive-remap-quality.md` — examples/cautions for mobile↔tablet↔desktop remap quality.
+- `design-repo-common/references/artifact-hygiene.md` — where human-facing vs runtime artifacts belong.
 - `scripts/check_design_repo.mjs` — structure/handoff/runtime consistency checker.
 - `scripts/promote_candidate.mjs` — promotes reviewed candidates to accepted root artifacts.
 
@@ -101,7 +102,7 @@ Key shared files:
 The same lanes are used during a full design run and during later patching:
 
 - `source-fix` — product/page/design-system/responsive truth is wrong or incomplete.
-- `copy-content` — visible labels, modules, required nouns, or redundant wording need edits.
+- `copy-content` — visible labels, modules, or redundant wording need edits.
 - `theme-style` — visual language, theme, hierarchy, density, or polish needs changes.
 - `responsive-remap` — breakpoint structure needs remapping.
 - `local-layout` — valid generated shell has layout defects.
@@ -115,6 +116,10 @@ Default rule:
 source before artifact → candidate before promotion → review before handoff
 ```
 
+## Hard vs soft visible labels
+
+The bundle uses one visible-label model. Product/page identity and explicitly marked `Required visible labels` are hard. Inferred modules, modes, filters, chips, card titles, and CTAs are soft: preserve them when practical, but review may accept equivalent wording.
+
 ## Review evidence
 
 Every serious generated design should be reviewed using the screenshot triplet:
@@ -124,6 +129,8 @@ Every serious generated design should be reviewed using the screenshot triplet:
 3. `<breakpoint>.local.full.png` — full-access local browser full-page render.
 
 If Stitch canvas screenshots are unavailable, the bundle creates `<breakpoint>.png` from local browser fallback and marks the metadata as degraded / non-release-quality. That makes the missing canvas evidence explicit instead of silently pretending it is normal Stitch evidence.
+
+If export writes a candidate before a visible-label gate fails, keep it as failed evidence under `attempts/`. Root artifacts still change only through promotion.
 
 ## Promotion and closure
 
@@ -152,23 +159,36 @@ Promotion requires:
 - candidate metadata references the candidate files
 - candidate directory is inside that page's `attempts/` folder
 
-Handoff requires matching accepted root artifacts, review, metadata, lifecycle event, and `runtime/state.json` `approved[breakpoint]` entry.
+Handoff requires matching accepted root artifacts, review, metadata, lifecycle event, and `runtime/state.json` `approved[breakpoint]` entry. Promotion/checker currently operate on the accepted artifact stem passed as the breakpoint; for themed variants use a distinct stem consistently or keep selectable themes inside one breakpoint artifact.
 
 ## Dependencies
 
 Runtime:
 
-- Node.js 20+ recommended.
+- Node.js 20+ recommended, with global `fetch` and `WebSocket` available.
 - Stitch adapter requires `@google/stitch-sdk` when using real Stitch operations.
-- A browser-capable environment is needed for local HTML screenshot/render checks.
+- A Chromium-compatible browser is needed for local HTML screenshot/render checks. Set `CHROMIUM_BIN` if the runtime cannot auto-detect one.
 
-Install the Stitch SDK in the target environment, or set `STITCH_SDK_NODE_MODULES` to a directory containing it:
+Install the Stitch SDK in the target environment, or set `STITCH_SDK_NODE_MODULES` to a directory containing it.
+
+Option A — install beside the active runtime:
 
 ```bash
 npm install @google/stitch-sdk@0.1.0
 ```
 
-Do not vendor `node_modules` into the skill bundle.
+Option B — keep the skill bundle clean and install dependencies elsewhere:
+
+```bash
+npm install --prefix /tmp/design-skills-deps @google/stitch-sdk@0.1.0
+export STITCH_SDK_NODE_MODULES=/tmp/design-skills-deps/node_modules
+```
+
+`STITCH_SDK_NODE_MODULES` may point to either a `node_modules` directory or a prefix directory that contains `node_modules/`. Do not vendor `node_modules` into the skill bundle.
+
+## Subagent boundaries
+
+Use subagents only for bounded reviews, divergent research, brainstorming, or isolated E2E pilots in temp repos. Brainstorming default: parent alone; 1-2 subagents when direction is ambiguous/important; 3-4 only when explicitly requested or clearly justified. Parent agent owns routing, promotion, final acceptance, and final user summary. Subagents must not commit, push, install into the bundle, modify active skills, or delete outside their assigned repo unless explicitly requested. See `design-repo-common/references/subagent-policy.md`.
 
 ## External write policy
 

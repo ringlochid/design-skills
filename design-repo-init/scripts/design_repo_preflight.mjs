@@ -2,7 +2,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import process from 'node:process';
-import { parseArgs, writeJson, ensureDir } from './stitch_common.mjs';
+import { parseArgs, writeJson, ensureDir } from '../../stitch-adapter/scripts/stitch_common.mjs';
 
 const args = parseArgs(process.argv);
 const projectRoot = path.resolve(args['project-root'] || process.cwd());

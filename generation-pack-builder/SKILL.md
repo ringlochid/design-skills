@@ -17,6 +17,8 @@ Goal: transform source truth into deterministic generation inputs.
 
 ## Prompt lock layers
 
+For the minimal lock mental model, use `references/prompt-locks.md`.
+
 - `pre-approval-lock.md` — product/page intent.
 - `copy-lock.md` — copy and content that must not drift.
 
@@ -38,3 +40,11 @@ Do not call Stitch or other generation tools here.
 ## Shared rules
 
 When promoting, generating, reviewing, repairing, or handing off artifacts, use `../design-repo-common/references/source-truth-rules.md`; use `../design-repo-common/references/tool-policy.md` for web/browser/image-generation placement.
+
+## Hard vs soft labels
+
+Keep the lock model small. Product/page identity and source-explicit `Required visible labels` are hard gates. Inferred modules, modes, filters, chips, card titles, and CTAs are soft visible labels: preserve them when practical, but review can accept equivalent wording if the design still satisfies source truth.
+
+## Responsive prompt quality
+
+For non-primary breakpoint packs, read `../design-repo-common/references/responsive-remap-quality.md` when the responsive plan is thin or the previous remap was sparse, cramped, or invented. Keep prompt instructions principle-based; examples live in the reference.

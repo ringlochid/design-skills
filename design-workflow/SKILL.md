@@ -15,7 +15,7 @@ Goal: be the conductor for one full design run while leaf skills keep their narr
 4. Build generation pack and locks.
 5. Run tool adapter only after explicit approval for external mutations.
 6. Review generated artifacts.
-7. Write responsive plan before target breakpoint remap/repair.
+7. Write responsive plan before target breakpoint remap/repair; use `../design-repo-common/references/responsive-remap-quality.md` for non-primary breakpoint quality examples when needed.
 8. Run layout repair only on a valid target shell.
 9. Review again, then hand off.
 
@@ -54,3 +54,7 @@ Before generating or fixing, inspect current source truth and generated artifact
 ## Tool placement
 
 Use web search for external/category context, browser for live/generated HTML evidence, image analysis for screenshots/references, image generation only through `visual-asset-generator`, and subagents only for divergent synthesis or independent critique.
+
+## Subagents
+
+When using subagents, follow `../design-repo-common/references/subagent-policy.md`.

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 import process from 'node:process';
 import path from 'node:path';
-import { parseArgs, diagnoseLocalHtmlLayout, resolveDesignPaths, viewportOptionsFromArgs } from './stitch_common.mjs';
+import { parseArgs, diagnoseLocalHtmlLayout, resolveDesignPaths, viewportOptionsFromArgs } from '../../stitch-adapter/scripts/stitch_common.mjs';
 
 const args = parseArgs(process.argv);
 const htmlPath = args['html-file'] || args.html || null;

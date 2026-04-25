@@ -13,7 +13,7 @@ import {
   applyAutomatedLayoutFix,
   breakpointForDeviceType,
   artifactStemForOutdir,
-} from './stitch_common.mjs';
+} from '../../stitch-adapter/scripts/stitch_common.mjs';
 
 function parseBooleanFlag(value, defaultValue = false) {
   if (value === undefined || value === null || value === '') return defaultValue;
@@ -31,6 +31,38 @@ async function fileExists(targetPath) {
   } catch {
     return false;
   }
+}
+function requiredNounMisses(check) {
+  return (check?.hardMissing || []).filter((item) => item?.kind === 'requiredNoun' || /requirednoun/i.test(String(item?.kind || '')));
+}
+
+function stitchScreenIdFromMeta(meta = {}) {
+  return meta.outputScreenId || meta.screenId || meta.inputScreenId || meta.derivedFromScreenId || meta.sourceStitchScreenId || null;
+}
+
+async function readSourceMetaForHtml({ htmlPath, outdir, artifactStem }) {
+  const htmlDir = path.dirname(path.resolve(htmlPath));
+  const candidates = [
+    path.join(htmlDir, 'runtime', `${artifactStem}.meta.json`),
+    path.join(path.resolve(outdir), 'runtime', `${artifactStem}.meta.json`),
+  ];
+  for (const candidate of candidates) {
+    const meta = await readJsonIfExists(candidate, null);
+    if (meta) return { path: candidate, meta };
+  }
+  return { path: null, meta: {} };
+}
+
+function canonicalOutdirForRepair({ outdir, htmlPath, sourceMeta = {} }) {
+  if (sourceMeta.canonicalOutdir) return path.resolve(sourceMeta.canonicalOutdir);
+  const resolvedOutdir = path.resolve(outdir);
+  const marker = `${path.sep}attempts${path.sep}`;
+  const fromOutdir = resolvedOutdir.indexOf(marker);
+  if (fromOutdir !== -1) return resolvedOutdir.slice(0, fromOutdir);
+  const resolvedHtml = path.resolve(htmlPath);
+  const fromHtml = resolvedHtml.indexOf(marker);
+  if (fromHtml !== -1) return resolvedHtml.slice(0, fromHtml);
+  return resolvedOutdir;
 }
 
 const args = parseArgs(process.argv);
@@ -64,14 +96,17 @@ if (!htmlPath || !outdir) {
   process.exit(1);
 }
 
-const diagnosticsDir = path.join(outdir, 'runtime', 'diagnostics');
+const sourceMetaRecord = await readSourceMetaForHtml({ htmlPath, outdir, artifactStem });
+const sourceMeta = sourceMetaRecord.meta || {};
+const canonicalOutdir = canonicalOutdirForRepair({ outdir, htmlPath, sourceMeta });
+const diagnosticsDir = path.join(canonicalOutdir, 'runtime', 'diagnostics');
 await ensureDir(diagnosticsDir);
 const diagnosticsFile = args['diagnostics-file'] || path.join(diagnosticsDir, `${artifactStem}.layout-diagnostics.json`);
 let diagnostics = await readJsonIfExists(diagnosticsFile, null);
 if (!diagnostics) {
   const diagnosed = await diagnoseLocalHtmlLayout({
     htmlPath,
-    outdir,
+    outdir: canonicalOutdir,
     deviceType,
     stateFile,
     preApprovalLockFile: args['pre-approval-lock-file'] || null,
@@ -90,7 +125,7 @@ if (!diagnostics.safeToAutoFix) {
   process.stdout.write(JSON.stringify({
     breakpoint,
     attempt,
-    decision: 'contract-fix-first',
+    decision: 'needs-source',
     legacyDecision: 'blocked',
     reason: (diagnostics.blockers || []).join(', ') || 'unknown blocker',
     diagnosticsFile,
@@ -98,8 +133,9 @@ if (!diagnostics.safeToAutoFix) {
   process.exit(0);
 }
 
-const attemptsRoot = path.join(outdir, 'attempts');
-const attemptLabel = keepAttempts ? `layout-fix-${attempt}` : 'layout-fix-current';
+const attemptsRoot = path.join(canonicalOutdir, 'attempts');
+const attemptStamp = new Date().toISOString().replace(/[:.]/g, '-');
+const attemptLabel = keepAttempts ? `layout-fix-${breakpoint}-${attempt}` : `layout-fix-${breakpoint}-${attempt}-${attemptStamp}-${process.hrtime.bigint().toString()}`;
 const attemptDir = path.join(attemptsRoot, attemptLabel);
 const attemptRuntimeDir = path.join(attemptDir, 'runtime');
 await ensureDir(attemptsRoot);
@@ -127,7 +163,8 @@ const layoutRepairPath = path.join(inPlace ? diagnosticsDir : attemptDir, 'layou
 await fs.writeFile(layoutRepairPath, `# Layout repair\n\n- Breakpoint: ${breakpoint}\n- Attempt: ${attempt}\n- Source html: ${path.resolve(htmlPath)}\n- Diagnostics file: ${path.resolve(diagnosticsFile)}\n- Selected strategies: ${(diagnostics.recommendedStrategies || []).join(', ') || 'none'}\n- Auto-fix allowed: ${diagnostics.safeToAutoFix ? 'yes' : 'no'}\n- Guardrail: preserve semantics and copy locks\n`);
 await writeJson(path.join(inPlace ? diagnosticsDir : attemptRuntimeDir, 'layout-diagnostics.json'), diagnostics);
 
-const reviewOutdir = inPlace ? outdir : attemptDir;
+const reviewOutdir = inPlace ? canonicalOutdir : attemptDir;
+const sourceScreenId = stitchScreenIdFromMeta(sourceMeta);
 const reviewed = await diagnoseLocalHtmlLayout({
   htmlPath: fixedHtmlPath,
   outdir: reviewOutdir,
@@ -140,9 +177,61 @@ const reviewed = await diagnoseLocalHtmlLayout({
   viewport,
   localPatchApplied: true,
   localPatchStrategy: (diagnostics.recommendedStrategies || []).join(', ') || 'layout-fix-auto',
+  derivedFromScreenId: sourceScreenId,
   pageKey: paths.pageKey,
   theme,
 });
+
+
+if (!inPlace) {
+  const candidateLocalPath = path.join(attemptDir, `${artifactStem}.local.png`);
+  const candidateFullPath = path.join(attemptDir, `${artifactStem}.local.full.png`);
+  const candidateIntentPath = path.join(attemptDir, `${artifactStem}.png`);
+  if (reviewed.imagePath && await fileExists(reviewed.imagePath)) await fs.copyFile(reviewed.imagePath, candidateLocalPath);
+  if (reviewed.fullImagePath && await fileExists(reviewed.fullImagePath)) await fs.copyFile(reviewed.fullImagePath, candidateFullPath);
+  const sourceIntentPath = path.join(canonicalOutdir, `${artifactStem}.png`);
+  if (await fileExists(sourceIntentPath)) await fs.copyFile(sourceIntentPath, candidateIntentPath);
+  else if (await fileExists(candidateLocalPath)) await fs.copyFile(candidateLocalPath, candidateIntentPath);
+  const metaPath = path.join(attemptRuntimeDir, `${artifactStem}.meta.json`);
+  const meta = await readJsonIfExists(metaPath, {});
+  const nounMisses = [
+    ...requiredNounMisses(meta.preApprovalLockCheck),
+    ...requiredNounMisses(meta.copyLockCheck),
+  ];
+  const traceScreenId = stitchScreenIdFromMeta(meta) || sourceScreenId;
+  await writeJson(metaPath, {
+    ...meta,
+    projectId: meta.projectId || sourceMeta.projectId || null,
+    screenId: meta.screenId || traceScreenId || null,
+    inputScreenId: meta.inputScreenId || sourceMeta.inputScreenId || sourceMeta.screenId || sourceMeta.outputScreenId || null,
+    derivedFromScreenId: meta.derivedFromScreenId || traceScreenId || null,
+    sourceStitchScreenId: meta.sourceStitchScreenId || sourceScreenId || null,
+    sourceMetaPath: meta.sourceMetaPath || sourceMetaRecord.path || null,
+    lifecycleState: 'candidate-ready',
+    screenshotSource: 'local-html-full-access-fallback',
+    screenshotFallback: {
+      reason: await fileExists(sourceIntentPath) ? 'layout-repair-derived-from-existing-intent-screenshot' : 'layout-repair-local-browser-fallback',
+      releaseQuality: false,
+      imagePath: candidateIntentPath,
+      capturedAt: new Date().toISOString(),
+    },
+    htmlPath: fixedHtmlPath,
+    localHtmlRender: {
+      imagePath: candidateLocalPath,
+      fullImagePath: candidateFullPath,
+      source: 'full-access-local-html-render',
+    },
+    localPatchApplied: true,
+    localPatchStrategy: (diagnostics.recommendedStrategies || []).join(', ') || 'layout-fix-auto',
+    derivedFromScreenId: meta.derivedFromScreenId || traceScreenId || null,
+    postExportRequiredNounCheck: {
+      passed: nounMisses.length === 0,
+      hardMissing: nounMisses,
+      checkedAt: new Date().toISOString(),
+      evidence: 'layout repair candidate local HTML lock checks',
+    },
+  });
+}
 
 const restoredAfterFailedReview = reviewed?.diagnostics?.safeToAutoFix === false ? await restoreInPlaceOnFailure() : false;
 

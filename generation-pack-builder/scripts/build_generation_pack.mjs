@@ -37,9 +37,15 @@ async function readOptional(rel) {
   try { return await fs.readFile(path.join(projectRoot, rel), 'utf8'); } catch { return ''; }
 }
 
-function cleanDisplayTitle(value, fallback) {
-  const cleaned = String(value || fallback || '')
-    .replace(/(page\s+spec|specification|content)/ig, '')
+async function readOptionalJson(rel) {
+  try { return JSON.parse(await fs.readFile(path.join(projectRoot, rel), 'utf8')); } catch { return null; }
+}
+
+function cleanDisplayTitle(value, fallback, options = {}) {
+  const shouldStripScaffold = options.stripScaffold !== false;
+  let cleaned = String(value || fallback || '');
+  if (shouldStripScaffold) cleaned = cleaned.replace(/\b(page\s+spec|specification|content)\b/ig, '');
+  cleaned = cleaned
     .replace(/\s+[-–—:]\s*$/g, '')
     .replace(/\s{2,}/g, ' ')
     .trim();
@@ -51,6 +57,11 @@ function explicitPageTitle(markdown) {
   return match ? match[1].trim() : null;
 }
 
+function explicitProductName(markdown) {
+  const match = String(markdown || '').match(/^[-*]\s*(?:product\s+name|app\s+name|site\s+title|brand)\s*:\s*(.+)$/im);
+  return match ? match[1].trim() : null;
+}
+
 function titleFromMarkdown(markdown, fallback) {
   const explicit = explicitPageTitle(markdown);
   if (explicit) return cleanDisplayTitle(explicit, fallback);
@@ -59,10 +70,14 @@ function titleFromMarkdown(markdown, fallback) {
 }
 
 function headingsFromMarkdown(markdown) {
-  const scaffold = new Set(['page goal','primary user journey','sections','data/actions','constraints','jobs dashboard content','product goal','target users','core workflows','success criteria','assumptions / open questions','required visible labels','header copy','kpi card copy','metadata','source truth','notes','acceptance criteria']);
+  const scaffoldExact = new Set([
+    'page goal','primary user journey','sections','data/actions','data / actions','constraints','product goal','target users','core workflows','success criteria','assumptions / open questions','required visible labels','header copy','kpi card copy','metric copy','activity copy','coach ai copy','metadata','source truth','notes','acceptance criteria'
+  ]);
+  const scaffoldPattern = /^(.*\b(content|page spec|spec|copy)\b|required visible modules?|data\/actions?|constraints?)$/i;
   return [...String(markdown || '').matchAll(/^#{1,3}\s+(.+)$/gm)]
-    .map((m) => m[1].trim())
-    .filter((value) => value && !/^todo$/i.test(value) && !scaffold.has(value.toLowerCase()))
+    .map((m) => cleanDisplayTitle(m[1].trim(), '', { stripScaffold: false }))
+    .filter((value) => value && !/^todo$/i.test(value))
+    .filter((value) => !scaffoldExact.has(value.toLowerCase()) && !scaffoldPattern.test(value))
     .slice(0, 6);
 }
 
@@ -72,25 +87,105 @@ function normalizeVisibleBullet(value) {
   if (field) {
     const label = field[1].trim().toLowerCase();
     const rhs = field[2].trim();
-    if (/^(page title|visible page title|display title|product name|module|label|heading|section|cta|metric|card|tab)$/.test(label)) clean = rhs;
+    if (/^(chips?|tabs?|modes?|filters?|mode chips?|mode labels?|filter chips?|filter labels?|segments?)$/.test(label)) return '';
+    if (/^(page title|visible page title|display title|product name|required modules?|visible modules?|modules?|label|heading|section|cta|metric|card)$/.test(label)) clean = rhs;
     else if (/^(route|role|owner|source|status|breakpoint|screen id|project id|updated|notes?|metadata)$/.test(label)) return '';
   }
-  if (/^(none|n\/?a|todo|draft required)/i.test(clean)) return '';
-  if (/^(route|role|owner|source|status|breakpoint|screen id|project id|updated|metadata)/i.test(clean)) return '';
+  if (/^(none|n\/?a|todo|draft required)$/i.test(clean)) return '';
+  if (/^(route|role|owner|source|status|breakpoint|screen id|project id|updated|metadata)\b/i.test(clean)) return '';
+  if (/\b(must|should|avoid|preserve|provide|create|review|generate|candidate|source truth|exactly|visible ui|do not)\b/i.test(clean) && clean.length > 28) return '';
+  if (clean.split(/\s+/).length > 6) return '';
   return clean.replace(/`/g, '').trim();
 }
 
 function bulletLabelsFromMarkdown(markdown) {
-  return [...String(markdown || '').matchAll(/^[-*]\s+(.+)$/gm)]
-    .map((m) => normalizeVisibleBullet(m[1]))
-    .filter((value) => value && value.length >= 3 && value.length <= 48);
+  const skipSections = new Set([
+    'metadata', 'source truth', 'notes', 'implementation notes', 'debug notes',
+    'prompt checks', 'review notes', 'acceptance criteria', 'status', 'routing',
+  ]);
+  const skipSectionPattern = /^(metadata|source truth|notes?|implementation|debug|review|status|routing)\b/i;
+  const labels = [];
+  let currentSection = '';
+  for (const line of String(markdown || '').split(/\r?\n/)) {
+    const heading = line.match(/^#{1,6}\s+(.+)$/);
+    if (heading) {
+      currentSection = cleanDisplayTitle(heading[1], '', { stripScaffold: false }).toLowerCase();
+      continue;
+    }
+    if (skipSections.has(currentSection) || skipSectionPattern.test(currentSection)) continue;
+    const bullet = line.match(/^[-*]\s+(.+)$/);
+    if (!bullet) continue;
+    const normalized = normalizeVisibleBullet(bullet[1]);
+    if (normalized && normalized.length >= 3 && normalized.length <= 48) labels.push(normalized);
+  }
+  return labels;
+}
+
+function splitVisibleLabelList(value) {
+  return String(value || '')
+    .replace(/\band\b/gi, ',')
+    .split(/[,/|]+/)
+    .map((item) => normalizeVisibleBullet(item))
+    .filter((item) => item && item.length >= 2 && item.length <= 32);
+}
+
+function structuredVisibleLabelsFromMarkdown(markdown) {
+  const labels = [];
+  for (const match of String(markdown || '').matchAll(/^[-*]?\s*(?:.*?\b(?:chips?|tabs?|segments?|filters?|modes?|mode\s+labels?|filter\s+labels?)\b)\s*:\s*(.+)$/gim)) {
+    for (const label of splitVisibleLabelList(match[1])) labels.push(label);
+  }
+  const seen = [];
+  for (const label of labels) {
+    const lower = label.toLowerCase();
+    if (seen.some((item) => item.toLowerCase() === lower)) continue;
+    seen.push(label);
+    if (seen.length >= 12) break;
+  }
+  return seen;
+}
+
+function uniqueVisibleLabels(values = [], limit = 24) {
+  const seen = [];
+  for (const value of values) {
+    const label = normalizeVisibleBullet(value);
+    if (!label) continue;
+    const lower = label.toLowerCase();
+    if (seen.some((item) => item.toLowerCase() === lower)) continue;
+    seen.push(label);
+    if (seen.length >= limit) break;
+  }
+  return seen;
+}
+
+function explicitRequiredVisibleLabelsFromMarkdown(markdown) {
+  const labels = [];
+  const text = String(markdown || '');
+  for (const match of text.matchAll(/^[-*]?\s*(?:required\s+visible\s+labels?|hard\s+visible\s+labels?|must\s+show)\s*:\s*(.+)$/gim)) {
+    labels.push(...splitVisibleLabelList(match[1]));
+  }
+  let inRequiredSection = false;
+  for (const line of text.split(/\r?\n/)) {
+    const heading = line.match(/^#{1,6}\s+(.+)$/);
+    if (heading) {
+      inRequiredSection = /^required\s+visible\s+labels?$/i.test(heading[1].trim()) || /^hard\s+visible\s+labels?$/i.test(heading[1].trim());
+      continue;
+    }
+    if (!inRequiredSection) continue;
+    if (!line.trim()) {
+      inRequiredSection = false;
+      continue;
+    }
+    const bullet = line.match(/^[-*]\s+(.+)$/);
+    if (bullet) labels.push(normalizeVisibleBullet(bullet[1]));
+  }
+  return uniqueVisibleLabels(labels, 12);
 }
 
 function lockTermsFromSource({ spec = '', content = '' } = {}) {
   const stopPhrases = new Set(['last updated timestamp']);
   const candidates = [
-    ...bulletLabelsFromMarkdown(content),
     ...bulletLabelsFromMarkdown(spec),
+    ...bulletLabelsFromMarkdown(content),
   ];
   const seen = [];
   for (const item of candidates) {
@@ -100,11 +195,12 @@ function lockTermsFromSource({ spec = '', content = '' } = {}) {
     if (/^(header|sections?|constraints?|data\/actions?|page goal|primary user journey)$/i.test(clean)) continue;
     if (seen.some((value) => value.toLowerCase() === lower)) continue;
     seen.push(clean);
-    if (seen.length >= 10) break;
+    if (seen.length >= 18) break;
   }
   return seen;
 }
 
+const config = await readOptionalJson('00-product/design-config.json');
 const brief = await readRequired('00-product/brief.md');
 const design = await readRequired('01-system/DESIGN.md');
 const spec = await readRequired(`02-pages/${pageKey}/spec.md`);
@@ -121,17 +217,24 @@ await ensureDir(outdir);
 await ensureDir(locksDir);
 
 const pageTitle = titleFromMarkdown(spec, pageKey.replace(/-/g, ' '));
-const siteTitle = titleFromMarkdown(brief, 'Product');
-const coreHeadings = headingsFromMarkdown(spec).concat(headingsFromMarkdown(content)).slice(0, 6);
-const requiredNouns = lockTermsFromSource({ spec, content }).slice(0, 10);
-if (!requiredNouns.length) throw new Error('Unable to derive meaningful visible lock terms. Add concrete page content/actions first.');
+const productName = cleanDisplayTitle(config?.productName || explicitProductName(brief) || titleFromMarkdown(brief, 'Product'), 'Product');
+const siteTitle = productName;
+const coreHeadings = []; // Avoid locking scaffold/source headings; visible content is protected by required visible labels and copy lock.
+const hardVisibleLabels = uniqueVisibleLabels(explicitRequiredVisibleLabelsFromMarkdown(`${spec}\n${content}`), 12);
+const inferredVisibleLabels = uniqueVisibleLabels([
+  ...lockTermsFromSource({ spec, content }),
+  ...structuredVisibleLabelsFromMarkdown(`${spec}\n${content}`),
+], 18).filter((label) => !hardVisibleLabels.some((hard) => hard.toLowerCase() === label.toLowerCase()));
+const promptVisibleLabels = uniqueVisibleLabels([...hardVisibleLabels, ...inferredVisibleLabels], 24);
+if (!promptVisibleLabels.length) throw new Error('Unable to derive meaningful visible lock terms. Add concrete page content/actions first.');
+
 
 const lockGuidance = {
   siteTitle: null,
   pageTitle,
   pageName: pageTitle,
-  coreHeadings,
-  requiredNouns,
+  coreHeadings: inferredVisibleLabels,
+  requiredNouns: hardVisibleLabels,
   navLabels: [],
   ctaLabels: [],
   preApprovalCtas: [],
@@ -142,30 +245,38 @@ const copyLockPath = path.join(locksDir, 'copy-lock.md');
 await fs.writeFile(preApprovalLockPath, buildPreApprovalLockMarkdown(lockGuidance));
 await fs.writeFile(copyLockPath, buildCopyLockMarkdown(lockGuidance));
 
-const prompt = `Design the ${breakpoint} breakpoint for ${pageTitle}.
+const prompt = `Design the ${breakpoint} breakpoint for ${pageTitle} as a finished product UI screen, not as a document.
 
-Non-negotiables:
+Renderable UI brief:
 - Product name: ${siteTitle}
 - Page title: ${pageTitle}
-- Do not invent alternate product or page names.
 - Route candidate: /${pageKey}
+- Hard required visible labels: ${hardVisibleLabels.length ? hardVisibleLabels.join(', ') : '[none explicitly marked]'}
+- Soft visible labels to preserve when practical: ${inferredVisibleLabels.join(', ')}
+- Output should be a polished, responsive ${breakpoint} app screen with real visual hierarchy, cards, navigation, and controls where appropriate.
+
+Non-negotiables:
+- Do not invent alternate product or page names.
+- Do not render markdown headings, bullets, implementation notes, source labels, or PRD/spec prose as the UI.
 - Role access: use roles/permissions only when explicitly described in source truth.
 - Theme strategy: source-truth DESIGN.md.
-- Preserve these visible page terms: ${requiredNouns.join(', ')}.
 
 Responsive intent:
 ${responsive || `Use the ${breakpoint} breakpoint contract from the page spec. Preserve hierarchy and adapt layout intentionally.`}
 
 Visual direction:
+Apply this direction; do not render this text.
 ${design}
 
 Layout and semantic requirements:
+Apply this source as UI requirements; do not render as markdown/spec/PRD prose.
 ${spec}
 
 Exact visible copy and labels:
+Use field values as UI copy only when they are actual visible labels; do not render source field names.
 ${content || 'Use only source-grounded concise copy from the product brief and page spec; do not invent unrelated marketing claims.'}
 
-States to account for:
+States to account for (apply only where useful in the UI):
 ${states || '(none)'}
 
 Avoid:
@@ -173,7 +284,7 @@ Avoid:
 - marketing hero sections
 - placeholder charts or lorem ipsum
 - unrelated business, finance, ecommerce, CRM, or social metrics
-- debug notes, scaffold headings, or implementation commentary in the visible UI
+- debug notes, scaffold headings, PRD text, or implementation commentary in the visible UI
 `;
 const promptFile = path.join(outdir, `${breakpoint}.prompt.md`);
 await fs.writeFile(promptFile, prompt);

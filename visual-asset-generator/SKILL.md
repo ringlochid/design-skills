@@ -30,6 +30,8 @@ Generated images are references/assets, not product or design-system truth unles
 
 ## Output shape
 
+For prompt structure, use `references/asset-prompt-patterns.md`.
+
 - Asset purpose
 - Generated paths
 - Selected/not-selected status

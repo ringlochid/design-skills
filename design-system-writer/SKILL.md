@@ -32,3 +32,7 @@ Goal: produce tool-agnostic visual/design-system guidance before generation.
 ## Rule
 
 Tool exports under `04-generated/` are cache/reference until explicitly merged back into `01-system/`.
+
+## Output shape
+
+For DESIGN.md structure, use `references/design-md-template.md`.
