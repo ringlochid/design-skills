@@ -42,7 +42,6 @@ Patch:
   - `layout-repair-loop/scripts/stitch_layout_diagnose.mjs`
   - `layout-repair-loop/scripts/stitch_layout_fix.mjs`
   - `layout-repair-loop/scripts/stitch_local_review.mjs`
-  - `layout-repair-loop/scripts/stitch_phase_c_loop.mjs`
 
 Validation:
 

@@ -54,7 +54,6 @@ Fix: add compact `Output shape` sections.
 Files:
 
 - `design-repo-common/scripts/check_design_repo.mjs`
-- `design-repo-common/scripts/artifact_index.mjs`
 
 They exist, but leaf skills do not consistently instruct when to run them.
 
