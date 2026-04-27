@@ -1,47 +1,56 @@
 # Design Skills Bundle
 
-A design-repo-first skill pack for creating, reviewing, patching, and handing off product/page designs with Stitch-backed generation and local browser verification.
+Design Skills is an OpenClaw skill bundle for creating, reviewing, repairing, and handing off product/page designs in a structured design repository.
 
-This bundle replaces the old monolithic `design-flow` / `design-patch` approach with small skills and one shared support folder.
+It turns messy product intent into source truth, generation packs, Stitch-backed candidates, screenshot-based review, bounded repairs, and implementation-ready handoff artifacts. The bundle is intentionally repo-first: generated screens are evidence until they pass review and are promoted.
 
-## Public mental model
+## What it can do
 
-Use three entry points:
+- Start a new product/page/screen/flow design from source material.
+- Build product briefs, page specs, design-system guidance, responsive plans, and generation packs.
+- Use Stitch as a generation/edit/export adapter when approved.
+- Review generated artifacts with screenshot evidence before acceptance.
+- Patch existing generated designs without restarting the whole workflow.
+- Repair layout-only defects when source truth is already valid.
+- Produce a final handoff with clickable artifacts and screenshot previews.
 
-| User intent | Start here | What happens |
+## Start here
+
+| User intent | Entry skill | Result |
 |---|---|---|
-| Create a new product/page/screen/flow design | `design-workflow` | Builds source truth, generates artifacts, reviews, fixes, promotes, hands off |
-| Patch or refactor an existing generated design | `design-patch-workflow` | Classifies feedback, patches source/artifacts safely, reviews, promotes |
-| Review/critique only, no mutation | `design-review-gate` | Audits screenshots/artifacts and returns accept/fix/remap/regenerate verdict |
-
-`design-repo-router` is the front door when the request is ambiguous.
+| “Design this product/page/screen from scratch” | `design-workflow` | Full source → generation → review → handoff run |
+| “Patch this generated design” | `design-patch-workflow` | Targeted source/artifact repair path |
+| “Review this design only” | `design-review-gate` | Accept/fix/remap/regenerate verdict |
+| “I’m not sure which path this is” | `design-repo-router` | Smallest correct design lane |
 
 ## Core workflow
 
 ```text
 source truth
-  → generation pack + locks
-  → Stitch/tool adapter candidate
+  → generation pack and locks
+  → Stitch/tool candidate
   → screenshot triplet review
-  → fix lanes if needed
+  → fix lane if needed
   → promotion to accepted root artifacts
   → handoff
 ```
 
-Important rule: generated candidates are not accepted artifacts. Stitch generate/edit/export writes candidates under `attempts/`; root breakpoint files are accepted only after promotion.
+Important rule: generated candidates are not accepted artifacts. Stitch generate/edit/export writes candidates under `attempts/`; root breakpoint files change only after promotion.
 
-## Design repo layout created by the skills
+## Design repo layout
+
+The skills create and maintain this structure:
 
 ```text
-00-product/                    product brief, source inventory
+00-product/                    product brief and source inventory
 01-system/                     DESIGN.md, themes, tokens, components
 02-pages/<page>/               page spec, content, states, responsive plan
 03-references/                 screenshots, research, backend/frontend references
 04-generated/stitch/<page>/    accepted human-facing design artifacts
   <breakpoint>.html
   <breakpoint>.png             Stitch canvas screenshot, or explicit degraded fallback
-  <breakpoint>.local.png       full-access browser viewport screenshot
-  <breakpoint>.local.full.png  full-access browser full-page screenshot
+  <breakpoint>.local.png       local browser viewport screenshot
+  <breakpoint>.local.full.png  local browser full-page screenshot
   <breakpoint>.prompt.md
   locks/*.md
   attempts/<label>/            candidate artifacts
@@ -50,65 +59,56 @@ Important rule: generated candidates are not accepted artifacts. Stitch generate
 06-handoff/                    final clickable Markdown handoff
 ```
 
-## Skills
+## Skills map
 
-### Routing and workflow
+### Routing and orchestration
 
-- `design-repo-router` — routes design requests to the smallest correct path.
-- `design-workflow` — conductor for new full design runs from source truth to handoff.
-- `design-patch-workflow` — conductor for existing generated artifact changes, screenshot feedback, missing/redundant items, refactors, and remaps.
+| Skill | Purpose |
+|---|---|
+| `design-repo-router` | Routes ambiguous design requests to the right path. |
+| `design-workflow` | Conducts new full design runs from source truth to handoff. |
+| `design-patch-workflow` | Conducts targeted fixes for existing generated artifacts. |
+| `design-repo-init` | Bootstraps or validates design repo structure. |
 
-### Source and research
+### Source truth and planning
 
-- `product-source-reader` — extracts product intent from ideas, docs, screenshots, architecture notes, and references.
-- `backend-capability-reader` — reads backend/API/code capabilities and constraints relevant to UI design.
-- `reference-research` — gathers category, competitor, product, or visual references.
-- `product-brief-writer` — writes product-level source truth in `00-product/brief.md`.
-- `page-spec-writer` — writes page-level contracts: modules, content, states, actions, constraints.
-- `design-system-writer` — writes visual system guidance: `01-system/DESIGN.md`, themes, tokens, components.
-- `design-direction-brainstorm` — optional divergent visual/product direction exploration before locking the design system.
-- `design-source-patcher` — targeted source-truth patching for existing designs; edits only implicated sections, not whole documents.
-- `responsive-plan-writer` — writes breakpoint contracts and remap plans for mobile/tablet/desktop.
+| Skill | Purpose |
+|---|---|
+| `product-source-reader` | Extracts product intent from messy source material. |
+| `backend-capability-reader` | Reads APIs, data models, roles, and constraints for UI design. |
+| `reference-research` | Gathers category, competitor, and visual references. |
+| `product-brief-writer` | Writes `00-product/brief.md`. |
+| `page-spec-writer` | Writes page-level contracts for modules, states, actions, and content. |
+| `design-system-writer` | Writes themes, tokens, components, and visual guidance. |
+| `design-direction-brainstorm` | Explores divergent visual/product directions before locking. |
+| `responsive-plan-writer` | Writes breakpoint contracts and remap plans. |
+| `design-source-patcher` | Edits implicated source-truth sections during patches. |
 
-### Generation and tool adapters
+### Generation, review, and release
 
-- `generation-pack-builder` — turns source truth into tool-ready prompts, locks, and artifact paths.
-- `stitch-adapter` — talks to Stitch: project/session handling, generate/edit/export, reference sync, screenshots, local browser render.
-- `visual-asset-generator` — optional asset/moodboard/image generation support; generated assets are references, not source truth.
+| Skill | Purpose |
+|---|---|
+| `generation-pack-builder` | Converts source truth into tool-ready prompts, locks, and artifact paths. |
+| `stitch-adapter` | Handles Stitch generate/edit/export/reference sync when approved. |
+| `visual-asset-generator` | Generates optional reference assets without making them source truth. |
+| `design-review-gate` | Reviews screenshot triplets, locks, product fit, responsive behavior, a11y basics, and feasibility. |
+| `layout-repair-loop` | Fixes layout-only issues in valid generated shells. |
+| `design-handoff-release` | Writes final implementation handoff Markdown. |
 
-### Review, repair, and release
-
-- `design-review-gate` — reviews screenshot triplets, locks, product fit, responsive behavior, a11y basics, and implementation feasibility.
-- `layout-repair-loop` — fixes layout-only defects in valid generated shells: overflow, overlap, clipping, spacing, density, safe-area.
-- `design-handoff-release` — writes the final handoff Markdown with clickable artifact links and embedded screenshot previews.
-- `design-repo-init` — bootstraps and validates design repo structure/readiness.
-
-### Shared support
-
-- `design-repo-common/` — required shared references and scripts used by the skills. It is not an installable skill, but the bundle will break without it.
-
-Key shared files:
-
-- `design-repo-common/references/fix-lanes.md` — canonical fix lanes used by full workflow and patch workflow.
-- `design-repo-common/references/lifecycle.md` — canonical lifecycle states.
-- `design-repo-common/references/review-cycle.md` — bounded review/repair/remap loop.
-- `design-repo-common/references/responsive-remap-quality.md` — examples/cautions for mobile↔tablet↔desktop remap quality.
-- `design-repo-common/references/artifact-hygiene.md` — where human-facing vs runtime artifacts belong.
-- `scripts/check_design_repo.mjs` — structure/handoff/runtime consistency checker.
-- `scripts/promote_candidate.mjs` — promotes reviewed candidates to accepted root artifacts.
+`design-repo-common/` contains shared references and scripts. It is required support, but it is not an installable skill.
 
 ## Fix lanes
 
-The same lanes are used during a full design run and during later patching:
+The full workflow and patch workflow use the same repair vocabulary:
 
 - `source-fix` — product/page/design-system/responsive truth is wrong or incomplete.
-- `copy-content` — visible labels, modules, or redundant wording need edits.
-- `theme-style` — visual language, theme, hierarchy, density, or polish needs changes.
+- `copy-content` — visible labels, modules, wording, or redundant text need edits.
+- `theme-style` — visual language, hierarchy, density, theme, or polish needs changes.
 - `responsive-remap` — breakpoint structure needs remapping.
 - `local-layout` — valid generated shell has layout defects.
 - `stitch-edit` — local patching is insufficient; use Stitch edit/remap.
 - `review-only` — critique/audit only.
-- `fresh-generation` — no valid artifact exists; run full design workflow.
+- `fresh-generation` — no valid artifact exists; run the full design workflow.
 
 Default rule:
 
@@ -116,21 +116,19 @@ Default rule:
 source before artifact → candidate before promotion → review before handoff
 ```
 
-## Hard vs soft visible labels
+## Visible-label model
 
-The bundle uses one visible-label model. Product/page identity and explicitly marked `Required visible labels` are hard. Inferred modules, modes, filters, chips, card titles, and CTAs are soft: preserve them when practical, but review may accept equivalent wording.
+Product/page identity and explicitly marked `Required visible labels` are hard. Inferred modules, modes, filters, chips, card titles, and CTAs are soft: preserve them when practical, but review may accept equivalent wording.
 
 ## Review evidence
 
-Every serious generated design should be reviewed using the screenshot triplet:
+Every serious generated design should be reviewed with the screenshot triplet:
 
 1. `<breakpoint>.png` — Stitch canvas/API screenshot when available.
-2. `<breakpoint>.local.png` — full-access local browser viewport render.
-3. `<breakpoint>.local.full.png` — full-access local browser full-page render.
+2. `<breakpoint>.local.png` — local browser viewport render.
+3. `<breakpoint>.local.full.png` — local browser full-page render.
 
-If Stitch canvas screenshots are unavailable, the bundle creates `<breakpoint>.png` from local browser fallback and marks the metadata as degraded / non-release-quality. That makes the missing canvas evidence explicit instead of silently pretending it is normal Stitch evidence.
-
-If export writes a candidate before a visible-label gate fails, keep it as failed evidence under `attempts/`. Root artifacts still change only through promotion.
+If Stitch canvas screenshots are unavailable, the bundle creates `<breakpoint>.png` from local fallback and marks the metadata as degraded / non-release-quality. Missing evidence is explicit; it is not silently treated as normal Stitch output.
 
 ## Promotion and closure
 
@@ -149,73 +147,68 @@ Accepted artifacts live at:
 04-generated/stitch/<page>/<breakpoint>.local.full.png
 ```
 
-Promotion requires:
+Promotion requires a review-backed candidate, lock checks, required-label checks, screenshot evidence, valid metadata, and an accepted runtime state entry. Handoff requires matching accepted root artifacts, review evidence, metadata, lifecycle event, and `runtime/state.json` approval.
 
-- accepted review verdict or `promotion_eligible: true`
-- passing pre-approval lock check
-- passing copy lock check
-- passing post-export required-noun check
-- screenshot triplet present and non-tiny
-- candidate metadata references the candidate files
-- candidate directory is inside that page's `attempts/` folder
+## Design philosophy
 
-Handoff requires matching accepted root artifacts, review, metadata, lifecycle event, and `runtime/state.json` `approved[breakpoint]` entry. Promotion/checker currently operate on the accepted artifact stem passed as the breakpoint; for themed variants use a distinct stem consistently or keep selectable themes inside one breakpoint artifact.
+- **Source truth is the contract.** Product, page, system, and responsive truth drive generation and patching.
+- **Candidates are disposable.** Generated output is useful only after review, repair, and promotion.
+- **Screenshots are evidence.** Visual truth comes from captured artifacts, not from inferred layout math alone.
+- **Repair paths are bounded.** Patch source when semantics are wrong; patch layout when the shell is valid; regenerate only when needed.
+- **Handoff should be boring.** A downstream implementer should get clear links, screenshots, known risks, and no mystery state.
 
 ## Dependencies
 
 Runtime:
 
 - Node.js 20+ recommended, with global `fetch` and `WebSocket` available.
-- Stitch adapter requires `@google/stitch-sdk` when using real Stitch operations.
-- A Chromium-compatible browser is needed for local HTML screenshot/render checks. Set `CHROMIUM_BIN` if the runtime cannot auto-detect one.
+- A Chromium-compatible browser for local HTML screenshot/render checks.
+- `@google/stitch-sdk` only when using real Stitch operations.
 
-Install the Stitch SDK in the target environment, or set `STITCH_SDK_NODE_MODULES` to a directory containing it.
-
-Option A — install beside the active runtime:
-
-```bash
-npm install @google/stitch-sdk@0.1.0
-```
-
-Option B — keep the skill bundle clean and install dependencies elsewhere:
+Keep dependencies outside the skill bundle:
 
 ```bash
 npm install --prefix /tmp/design-skills-deps @google/stitch-sdk@0.1.0
 export STITCH_SDK_NODE_MODULES=/tmp/design-skills-deps/node_modules
 ```
 
-`STITCH_SDK_NODE_MODULES` may point to either a `node_modules` directory or a prefix directory that contains `node_modules/`. Do not vendor `node_modules` into the skill bundle.
+`STITCH_SDK_NODE_MODULES` may point to either a `node_modules` directory or a prefix containing `node_modules/`. Do not vendor `node_modules` into this repo.
 
-## Subagent boundaries
+## Validation
 
-Use subagents only for bounded reviews, divergent research, brainstorming, or isolated E2E pilots in temp repos. Brainstorming default: parent alone; 1-2 subagents when direction is ambiguous/important; 3-4 only when explicitly requested or clearly justified. Parent agent owns routing, promotion, final acceptance, and final user summary. Subagents must not commit, push, install into the bundle, modify active skills, or delete outside their assigned repo unless explicitly requested. See `design-repo-common/references/subagent-policy.md`.
+Useful checks after edits:
 
-## External write policy
+```bash
+node design-repo-common/scripts/check_design_repo.mjs <design-repo>
+```
 
-Stitch generate/edit are external mutations and require explicit operator approval before use. The skills should read/review freely, but do not create/edit Stitch projects/screens without confirmation.
+For bundle-level edits, also inspect skill frontmatter and shared reference paths before installing into an active workspace.
 
-## Installing into an active OpenClaw workspace
+## Installation notes
 
 Copy only:
 
-- each skill directory listed above
+- each public skill directory listed above
 - `design-repo-common/`
 - this `README.md` if useful for humans
 
-Do not copy:
-
-- `.git/`
-- `node_modules/`
-- generated design repos such as `02-pages/`, `04-generated/`, `05-review/`, `06-handoff/` from this development checkout
-- temporary review notes, patch plans, tests, package lockfiles, or scratch files
+Do not copy `.git/`, `node_modules/`, generated design repos, temporary review notes, package locks, scratch files, or runtime artifacts.
 
 Recommended staged rollout:
 
-1. Back up active legacy skills `design-flow` and `design-patch`.
+1. Back up active legacy skills if replacing an older bundle.
 2. Install this bundle in parallel.
 3. Run one full new-design pilot.
 4. Run one existing-artifact patch/refinement pilot.
-5. Only then replace or archive the legacy skills.
+5. Replace or archive legacy skills only after both pilots pass.
+
+## Subagent boundaries
+
+Use subagents for bounded reviews, divergent research, brainstorming, or isolated pilots. Parent agent owns routing, promotion, final acceptance, and user summary. Subagents should not commit, push, install, modify active skills, or delete outside their assigned repo unless explicitly requested.
+
+## External write policy
+
+Stitch generate/edit/export are external mutations. The skills should read and review freely, but they should not create or edit Stitch projects/screens without explicit operator approval.
 
 ## Current status
 
