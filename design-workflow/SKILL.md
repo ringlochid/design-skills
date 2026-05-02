@@ -19,6 +19,11 @@ Goal: be the conductor for one full design run while leaf skills keep their narr
 8. Run layout repair only on a valid target shell.
 9. Review again, then hand off.
 
+
+## Orchestrator WBS exposure
+
+For large new design-repo workflows, this skill is a phase playbook, not a hero agent. Use `../design-repo-common/references/orchestrator-workflows.md` for new-design WBS phases, package examples, gates, and parallelism hints. Parent/work orchestrator owns package planning, subagents, promotion, and final assembly.
+
 ## Review / fix cycle
 
 Use `../design-repo-common/references/review-cycle.md`, `../design-repo-common/references/fix-lanes.md`, and `../design-repo-common/references/lifecycle.md`. The conductor owns the loop budget, failure classification, retry decisions, and final stop state. Mid-run fixes use the same lanes as post-handoff patching; do not invent a separate repair path.
@@ -53,7 +58,7 @@ Before generating or fixing, inspect current source truth and generated artifact
 
 ## Tool placement
 
-Use web search for external/category context, browser for live/generated HTML evidence, image analysis for screenshots/references, image generation only through `visual-asset-generator`, and subagents only for divergent synthesis or independent critique.
+Use web search for external/category context, browser for live/generated HTML evidence, image analysis for screenshots/references, and image generation only through `visual-asset-generator`. For large WBS work, route package splitting/subagents through `work-orchestrator`; local conductor mode is for small or serial runs.
 
 ## Subagents
 

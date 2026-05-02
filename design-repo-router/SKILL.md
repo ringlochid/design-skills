@@ -23,4 +23,4 @@ Goal: choose the smallest design skill path.
 - Breakpoint structure is wrong, or user asks to make/remap mobile/tablet/desktop -> existing artifact: `responsive-plan-writer` through `design-patch-workflow`; no artifact/new full run: `design-workflow`.
 - Handoff for accepted artifacts -> `design-handoff-release`.
 
-Use `design-workflow` as conductor for new E2E runs. Use `design-patch-workflow` as conductor for existing artifacts. Do not route screenshot feedback straight to source-writing or layout repair unless the lane is already unambiguous.
+For orchestrated work, use `../design-repo-common/references/orchestrator-workflows.md` to map the deliverable to WBS phases and work packages. Use `design-workflow` as conductor for new E2E runs. Use `design-patch-workflow` as conductor for existing artifacts. Do not route screenshot feedback straight to source-writing or layout repair unless the lane is already unambiguous.

@@ -9,6 +9,10 @@ Goal: coordinate a targeted refinement without losing lineage or silently overwr
 
 Use this for existing generated artifacts. Start by classifying the request with `fix-lanes.md`. If no artifact exists, route to `design-workflow` instead.
 
+## Orchestrator WBS exposure
+
+For large patch/refinement work, use `../design-repo-common/references/orchestrator-workflows.md` for top-level WBS variants: screenshot feedback, missing breakpoint completion, layout-only repair, semantic/content/theme patch, and post-acceptance handoff refresh inside a patch lifecycle. Standalone review-only requests route to `design-review-gate`; standalone accepted-artifact handoff routes to `design-handoff-release`. Parent/work orchestrator owns package splitting, promotion, and final assembly.
+
 ## Responsibilities
 
 - confirm source truth, artifact, and lineage exist

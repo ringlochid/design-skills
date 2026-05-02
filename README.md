@@ -213,3 +213,14 @@ Stitch generate/edit/export are external mutations. The skills should read and r
 ## Current status
 
 This repository is the clean skill bundle checkout. It intentionally contains only skill directories, required shared support, and this README.
+
+
+## Bundle validation
+
+Before publishing or installing this skill bundle, run:
+
+```bash
+python3 design-repo-common/scripts/validate_design_bundle.py
+```
+
+This validates expected installable skills, shared references, orchestrator workflow exposure, and duplicate/nested skill hazards.
